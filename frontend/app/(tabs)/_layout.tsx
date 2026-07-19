@@ -16,7 +16,7 @@ function CreateTabButton() {
     Animated.spring(scale, { toValue: 0.9, useNativeDriver: true, speed: 40, bounciness: 8 }).start();
   const onPressOut = () =>
     Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 10 }).start();
-  const onPress = () => router.push("/editor/new");
+  const onPress = () => router.push("/ai-manual-edit");
 
   return (
     <View pointerEvents="box-none" style={styles.createSlot}>
@@ -86,7 +86,11 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="assets"
-        options={{ title: "Assets", tabBarIcon: ({ color, size }) => <Ionicons name="images" color={color} size={size - 2} /> }}
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="exports"
+        options={{ title: "Exports", tabBarIcon: ({ color, size }) => <Ionicons name="share" color={color} size={size - 2} /> }}
       />
       <Tabs.Screen
         name="profile"

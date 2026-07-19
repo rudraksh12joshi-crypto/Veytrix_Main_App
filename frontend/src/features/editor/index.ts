@@ -1,4 +1,5 @@
 export * from "./pages/EditorPage";
+export * from "./pages/AIManualEditIntroPage";
 export * from "./components/top-navigation/EditorTopNavigation";
 export * from "./components/left-sidebar/EditorLeftSidebar";
 export * from "./components/right-sidebar/EditorRightSidebar";
