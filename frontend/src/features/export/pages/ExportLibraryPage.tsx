@@ -20,10 +20,10 @@ const { width } = Dimensions.get("window");
 
 // Mock Data
 const MOCK_STATS = [
-  { label: "Total Exports", value: "24", icon: "videocam-outline", color: "#7C5CFF" },
-  { label: "Completed", value: "18", icon: "checkmark-circle-outline", color: "#3CD09A" },
+  { label: "Total Exports", value: "24", icon: "videocam-outline", color: "#1D2B64" },
+  { label: "Completed", value: "18", icon: "checkmark-circle-outline", color: "#3B6CE7" },
   { label: "Processing", value: "2", icon: "time-outline", color: "#FFB43C" },
-  { label: "Storage Used", value: "14.2 GB", icon: "cloud-outline", color: "#FF3B8B" },
+  { label: "Storage Used", value: "14.2 GB", icon: "cloud-outline", color: "#8CC8E8" },
 ];
 
 const MOCK_EXPORTS = [
@@ -98,7 +98,7 @@ export function ExportLibraryPage() {
       <View key={item.id} style={[styles.exportCard, { backgroundColor: theme.colors.surface }]}>
         <View style={styles.cardHeader}>
           <View style={styles.thumbnailContainer}>
-            <LinearGradient colors={["#2C1A5C", "#0A0A0B"]} style={styles.thumbnail} />
+            <LinearGradient colors={["#1D2B64", "#3B6CE7"]} style={styles.thumbnail} />
             <View style={styles.durationBadge}>
               <Text style={styles.durationText}>{item.duration}</Text>
             </View>
@@ -255,7 +255,7 @@ export function ExportLibraryPage() {
           </View>
           <View style={styles.storageBarBg}>
             <LinearGradient
-              colors={["#7C5CFF", "#3CD09A"]}
+              colors={["#1D2B64", "#3B6CE7"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={[styles.storageBarFill, { width: "28%" }]}
@@ -574,7 +574,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 28,
     elevation: 5,
-    shadowColor: "#000",
+    shadowColor: "#8CC8E8",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

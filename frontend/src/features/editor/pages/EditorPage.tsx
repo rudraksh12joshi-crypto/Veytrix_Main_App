@@ -383,7 +383,7 @@ export function EditorPage() {
       </View>
 
       <TouchableOpacity style={styles.floatingAiBtn}>
-        <LinearGradient colors={["#7C5CFF", "#FF3B8B"]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={["#1D2B64", "#3B6CE7"]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <Ionicons name="sparkles" size={16} color="#fff" />
         <Text style={styles.floatingAiText}>AI Assist</Text>
       </TouchableOpacity>
@@ -400,7 +400,7 @@ export function EditorPage() {
             onPress={() => setSelectedTool(tool.id)}
             activeOpacity={0.7}
           >
-            <View style={[styles.toolIconBox, selectedTool === tool.id && { backgroundColor: "rgba(124, 92, 255, 0.15)" }]}>
+            <View style={[styles.toolIconBox, selectedTool === tool.id && { backgroundColor: "rgba(59,108,231,0.15)" }]}>
               <Ionicons 
                 name={tool.icon as any} 
                 size={22} 
@@ -859,7 +859,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     gap: 6,
     overflow: "hidden",
-    shadowColor: "#FF3B8B",
+    shadowColor: "#3B6CE7",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 10,

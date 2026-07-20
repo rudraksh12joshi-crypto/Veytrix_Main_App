@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import React, { useState, useRef, useEffect } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, TextInput, KeyboardAvoidingView, Platform, Animated, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -8,6 +8,155 @@ import { useRouter } from "expo-router";
 import { useTheme } from "@/src/theme";
 import { useAuthStore } from "@/src/store/auth.store";
 
+// --- MOCK DATA FOR LISTS ---
+
+const QUICK_ACCESS = [
+  { icon: "folder", title: "My Projects", subtitle: "24 Active", color: "#3B6CE7", route: "/(tabs)/projects" },
+  { icon: "document-text", title: "Drafts", subtitle: "3 Saved", color: "#8CC8E8" },
+  { icon: "library", title: "Export Library", subtitle: "128 Videos", color: "#3B6CE7", route: "/(tabs)/exports" },
+  { icon: "heart", title: "Favorites", subtitle: "12 Items", color: "#FF3B8B", noChevron: true },
+  { icon: "cloud-download", title: "Downloaded Assets", subtitle: "5.4 GB", color: "#3B6CE7" },
+  { icon: "cloud", title: "Cloud Projects", subtitle: "Synced", color: "#8CC8E8" },
+  { icon: "color-wand", title: "Recent Templates", color: "#3B6CE7" },
+  { icon: "sparkles", title: "Recent AI Jobs", color: "#FFB43C" },
+  { icon: "people", title: "Shared Projects", color: "#3B6CE7" },
+];
+
+const EDITOR_PREFS = [
+  { icon: "options", title: "Editor Preferences", subtitle: "Timeline, export and editing preferences", route: "/settings/editor" }
+];
+
+const AI_SETTINGS = [
+  { icon: "color-wand", title: "AI Settings", subtitle: "Manage your AI editing preferences", route: "/settings/ai" }
+];
+
+const ACCOUNT = [
+  { icon: "person", title: "Profile" },
+  { icon: "information-circle", title: "Account Information" },
+  { icon: "mail", title: "Email", value: "user@veytrix.com" },
+  { icon: "call", title: "Phone Number" },
+  { icon: "key", title: "Password" },
+  { icon: "link", title: "Linked Accounts" },
+  { icon: "logo-google", title: "Google", value: "Linked" },
+  { icon: "logo-apple", title: "Apple", value: "Linked" },
+  { icon: "lock-closed", title: "Privacy" },
+];
+
+const SECURITY = [
+  { icon: "shield-checkmark", title: "Security" },
+  { icon: "finger-print", title: "2FA", value: "Enabled" },
+  { icon: "desktop", title: "Sessions" },
+  { icon: "phone-portrait", title: "Devices" },
+  { icon: "laptop", title: "Active Devices", value: "2" },
+  { icon: "time", title: "Login History" },
+  { icon: "checkmark-done-circle", title: "Trusted Devices" },
+  { icon: "trash-bin", title: "Delete Account", isDanger: true },
+];
+
+const NOTIFICATIONS = [
+  { icon: "notifications", title: "Notifications", subtitle: "Manage notification preferences", route: "/settings/notifications" }
+];
+
+const SUPPORT = [
+  { icon: "help-buoy", title: "Help Center" },
+  { icon: "play", title: "Tutorials" },
+  { icon: "apps", title: "Keyboard Shortcuts" },
+  { icon: "bulb", title: "Feature Requests" },
+  { icon: "people", title: "Community" },
+  { icon: "logo-discord", title: "Discord" },
+  { icon: "bug", title: "Report Bug" },
+  { icon: "chatbubbles", title: "Contact Support" },
+  { icon: "document-text", title: "Privacy Policy" },
+  { icon: "document", title: "Terms" },
+  { icon: "information-circle", title: "About App" },
+  { icon: "code-working", title: "Version", value: "1.0.0", noChevron: true },
+];
+
+// --- ANIMATED COMPONENTS ---
+
+function AnimatedPressable({ children, onPress, style, disabled }: any) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const onPressIn = () => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true }).start();
+  const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+
+  return (
+    <Pressable disabled={disabled} onPressIn={onPressIn} onPressOut={onPressOut} onPress={onPress}>
+      <Animated.View style={[style, { transform: [{ scale }] }]}>
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+function CounterText({ value, style }: { value: string, style: any }) {
+  // Simulates a counter animation on mount
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 50, friction: 6 })
+    ]).start();
+  }, [opacity, translateY]);
+
+  return (
+    <Animated.Text style={[style, { opacity, transform: [{ translateY }] }]}>
+      {value}
+    </Animated.Text>
+  );
+}
+
+// --- SUB COMPONENTS ---
+
+function SectionHeader({ title, subtitle }: { title: string, subtitle?: string }) {
+  const { theme } = useTheme();
+  return (
+    <View style={{ marginBottom: 12, marginLeft: 32 }}>
+      <Text style={[styles.sectionTitle, { marginBottom: subtitle ? 2 : 0, marginLeft: 0, color: theme.colors.textSecondary }]}>
+        {title}
+      </Text>
+      {subtitle && <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>{subtitle}</Text>}
+    </View>
+  );
+}
+
+function ListSection({ items, theme, router }: { items: any[], theme: any, router: any }) {
+  return (
+    <View style={[styles.cardGroup, { backgroundColor: theme.colors.surfaceElevated }]}>
+      {items.map((item, index) => {
+        const isLast = index === items.length - 1;
+        return (
+          <TouchableOpacity
+            key={index}
+            style={[styles.listItem, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border }]}
+            activeOpacity={0.7}
+            onPress={() => item.route && router.push(item.route)}
+          >
+            <View style={[styles.listIconBox, { backgroundColor: (item.color || theme.colors.textMuted) + "15" }]}>
+              <Ionicons name={item.icon as any} size={18} color={item.color || theme.colors.textMuted} />
+            </View>
+            <View style={styles.listTextContainer}>
+              <Text style={[styles.listTitle, { color: item.isDanger ? "#FF5C5C" : theme.colors.textPrimary }]}>
+                {item.title}
+              </Text>
+              {item.subtitle && <Text style={[styles.listSubtitle, { color: theme.colors.textSecondary }]}>{item.subtitle}</Text>}
+            </View>
+            {item.value && (
+              <Text style={{ color: theme.colors.textMuted, fontSize: 14, marginRight: 8 }}>{item.value}</Text>
+            )}
+            {!item.noChevron && (
+              <Ionicons name="chevron-forward" size={16} color={theme.colors.border} />
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// --- MAIN PAGE COMPONENT ---
+
 export function ProfilePage() {
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -15,167 +164,225 @@ export function ProfilePage() {
   const { user, reset } = useAuthStore();
   const [isEditModalVisible, setEditModalVisible] = useState(false);
 
-  const renderIcon = (name: any, color: string, bg: string) => (
-    <View style={[styles.iconBox, { backgroundColor: bg }]}>
-      <Ionicons name={name} size={18} color={color} />
-    </View>
-  );
-
-  const ListItem = ({
-    iconName,
-    iconColor,
-    iconBg,
-    title,
-    subtitle,
-    hasChevron = true,
-    isDestructive = false,
-    rightContent,
-    onPress
-  }: any) => (
-    <TouchableOpacity style={[styles.listItem, { borderBottomColor: theme.colors.border }]} activeOpacity={0.7} onPress={onPress}>
-      {renderIcon(iconName, iconColor, iconBg)}
-      <View style={styles.listTextContainer}>
-        <Text style={[styles.listTitle, { color: isDestructive ? theme.colors.danger : theme.colors.textPrimary }]}>
-          {title}
-        </Text>
-        {subtitle && <Text style={[styles.listSubtitle, { color: theme.colors.textSecondary }]}>{subtitle}</Text>}
-      </View>
-      {rightContent && <View style={styles.rightContent}>{rightContent}</View>}
-      {hasChevron && <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />}
-    </TouchableOpacity>
-  );
-
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40, paddingTop: insets.top + 20 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 80, paddingTop: insets.top + 16 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* 1. Profile Header */}
+        {/* 1. PROFILE HEADER */}
         <View style={styles.header}>
           <View style={styles.avatarWrapper}>
             <Image
               source={{ uri: "https://i.pravatar.cc/150?u=veytrix_user" }}
               style={styles.avatar}
             />
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={24} color="#3B6CE7" style={{ backgroundColor: "#fff", borderRadius: 12 }} />
+            </View>
             <View style={styles.premiumBadge}>
-              <Ionicons name="star" size={10} color="#000" />
+              <Text style={styles.premiumBadgeText}>PRO</Text>
+            </View>
+            <TouchableOpacity style={styles.avatarEditBtn} onPress={() => setEditModalVisible(true)}>
+              <Ionicons name="camera" size={14} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{user?.displayName || "Veytrix Creator"}</Text>
+          <Text style={[styles.userEmail, { color: theme.colors.textSecondary }]}>{user?.email || "creator@veytrix.com"}</Text>
+
+          <View style={styles.headerInfoRow}>
+            <Text style={{ color: theme.colors.textMuted, fontSize: 13, fontWeight: "600" }}>Pro Subscription</Text>
+            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: theme.colors.textMuted, marginHorizontal: 8 }} />
+            <Text style={{ color: theme.colors.textMuted, fontSize: 13, fontWeight: "600" }}>Member since 2026</Text>
+          </View>
+
+          <View style={styles.headerActionRow}>
+            <AnimatedPressable style={[styles.primaryBtn, { backgroundColor: theme.colors.primary }]} onPress={() => setEditModalVisible(true)}>
+              <Text style={styles.primaryBtnText}>Edit Profile</Text>
+            </AnimatedPressable>
+            <AnimatedPressable style={[styles.secondaryBtn, { backgroundColor: theme.colors.surfaceElevated }]}>
+              <Ionicons name="share-outline" size={18} color={theme.colors.textPrimary} style={{ marginRight: 6 }} />
+              <Text style={[styles.secondaryBtnText, { color: theme.colors.textPrimary }]}>Share</Text>
+            </AnimatedPressable>
+          </View>
+        </View>
+
+        {/* 2. WORKSPACE OVERVIEW STATS */}
+        <View style={styles.section}>
+          <SectionHeader title="Workspace Overview" subtitle="Quick overview of your editing workspace" />
+          <View style={{ backgroundColor: theme.colors.surfaceElevated, borderRadius: 20, padding: 20, shadowColor: "#3B6CE7", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              {[
+                { val: "24", label: "Projects", icon: "folder", color: "#3B6CE7", route: "/(tabs)/projects" },
+                { val: "128", label: "Exports", icon: "share", color: "#3B6CE7", route: "/(tabs)/exports" },
+                { val: "850", label: "Credits", icon: "sparkles", color: "#3B6CE7", route: "/settings/ai" },
+                { val: "4.2 GB", label: "Storage", icon: "cloud", color: "#3B6CE7" },
+              ].map((stat, i, arr) => (
+                <React.Fragment key={i}>
+                  <AnimatedPressable onPress={() => stat.route && router.push(stat.route as any)} style={{ alignItems: "center", flex: 1 }}>
+                    <Ionicons name={stat.icon as any} size={24} color={stat.color} style={{ marginBottom: 6 }} />
+                    <CounterText value={stat.val} style={{ color: theme.colors.textPrimary, fontSize: 20, fontWeight: "800", marginBottom: 2 }} />
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{stat.label}</Text>
+                  </AnimatedPressable>
+                  {i < arr.length - 1 && (
+                    <View style={{ width: 1, height: 40, backgroundColor: theme.colors.border }} />
+                  )}
+                </React.Fragment>
+              ))}
+            </View>
+            <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontWeight: "500" }}>Storage</Text>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontWeight: "500" }}>4.2 GB / 10 GB Used</Text>
+              </View>
+              <View style={{ width: "100%", height: 6, backgroundColor: theme.colors.border, borderRadius: 3, overflow: "hidden" }}>
+                <View style={{ width: "42%", height: "100%", backgroundColor: "#3B6CE7" }} />
+              </View>
             </View>
           </View>
-          <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{user?.displayName || "Veytrix User"}</Text>
-          <Text style={[styles.userEmail, { color: theme.colors.textSecondary }]}>{user?.email || "user@veytrix.com"}</Text>
-          <TouchableOpacity 
-            style={[styles.editButton, { backgroundColor: theme.colors.surfaceElevated }]}
-            onPress={() => setEditModalVisible(true)}
-          >
-            <Text style={[styles.editButtonText, { color: theme.colors.textPrimary }]}>Edit Profile</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* 2. Usage Overview (2x2 Grid) */}
-        <View style={styles.gridContainer}>
-          {[
-            { label: "Total Projects", value: "24", icon: "folder-outline", color: "#7C5CFF" },
-            { label: "Total Exports", value: "128", icon: "videocam-outline", color: "#3CD09A" },
-            { label: "Storage Used", value: "4.2 GB", icon: "cloud-outline", color: "#FFB43C" },
-            { label: "AI Credits", value: "850", icon: "sparkles-outline", color: "#FF3B8B" },
-          ].map((item, idx) => (
-            <View key={idx} style={[styles.gridCard, { backgroundColor: theme.colors.surface }]}>
-              <View style={[styles.gridIconBox, { backgroundColor: item.color + "15" }]}>
-                <Ionicons name={item.icon as any} size={20} color={item.color} />
-              </View>
-              <Text style={[styles.gridValue, { color: theme.colors.textPrimary }]}>{item.value}</Text>
-              <Text style={[styles.gridLabel, { color: theme.colors.textSecondary }]}>{item.label}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* 4. Subscription Card (Moved up for prominence) */}
+        {/* 3. SUBSCRIPTION CARD */}
         <View style={styles.section}>
-          <View style={styles.subscriptionContainer}>
-            <LinearGradient
-              colors={["rgba(124, 92, 255, 0.15)", "rgba(124, 92, 255, 0.05)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFillObject}
-            />
-            <BlurView intensity={20} tint="dark" style={styles.subscriptionContent}>
-              <View style={styles.subHeader}>
+          <SectionHeader title="Subscription" />
+          <AnimatedPressable style={[styles.subCard, { shadowColor: "#3B6CE7" }]}>
+            <LinearGradient colors={["#1D2B64", "#3B6CE7"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
+            <View style={styles.subContent}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <View>
-                  <Text style={styles.subTitle}>Veytrix Pro</Text>
-                  <Text style={styles.subCredits}>850 Credits Remaining</Text>
+                  <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: "600", textTransform: "uppercase" }}>Current Plan</Text>
+                  <Text style={{ color: "#fff", fontSize: 26, fontWeight: "800", marginTop: 4 }}>Pro Creator</Text>
+                  <Text style={{ color: "rgba(255,255,255,0.9)", fontSize: 13, marginTop: 4 }}>Renews on Aug 15, 2026</Text>
                 </View>
-                <Ionicons name="planet" size={32} color="#7C5CFF" />
+                <View style={styles.subIconWrap}>
+                  <Ionicons name="planet" size={28} color="#1D2B64" />
+                </View>
               </View>
-              <TouchableOpacity style={styles.upgradeButton}>
-                <Text style={styles.upgradeButtonText}>Upgrade Plan</Text>
+
+              <View style={styles.subFeatures}>
+                <View style={styles.subFeatItem}>
+                  <Text style={styles.subFeatVal}>850</Text>
+                  <Text style={styles.subFeatLabel}>Credits</Text>
+                </View>
+                <View style={styles.subFeatDivider} />
+                <View style={styles.subFeatItem}>
+                  <Text style={styles.subFeatVal}>100GB</Text>
+                  <Text style={styles.subFeatLabel}>Cloud</Text>
+                </View>
+                <View style={styles.subFeatDivider} />
+                <View style={styles.subFeatItem}>
+                  <Text style={styles.subFeatVal}>4K</Text>
+                  <Text style={styles.subFeatLabel}>Export</Text>
+                </View>
+              </View>
+
+              <View style={styles.subActionRow}>
+                <TouchableOpacity style={styles.subBtnLight}>
+                  <Text style={{ color: "#1D2B64", fontSize: 14, fontWeight: "700" }}>Manage Plan</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.subBtnDark}>
+                  <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>Buy Credits</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </AnimatedPressable>
+        </View>
+
+        {/* 4. LIST SECTIONS (Ordered) */}
+        <View style={styles.section}>
+          <ListSection items={QUICK_ACCESS} theme={theme} router={router} />
+        </View>
+
+        <View style={styles.section}>
+          <ListSection items={EDITOR_PREFS} theme={theme} router={router} />
+        </View>
+
+        <View style={styles.section}>
+          <ListSection items={AI_SETTINGS} theme={theme} router={router} />
+        </View>
+
+        {/* 5. STORAGE WIDGET */}
+        <View style={styles.section}>
+          <SectionHeader title="Storage Management" />
+          <View style={[styles.storageCard, { backgroundColor: theme.colors.surfaceElevated }]}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <Ionicons name="server" size={24} color="#3B6CE7" />
+                <View>
+                  <Text style={{ color: theme.colors.textPrimary, fontSize: 16, fontWeight: "700" }}>4.2 GB Used</Text>
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginTop: 2 }}>of 100 GB Total</Text>
+                </View>
+              </View>
+              <Text style={{ color: "#3CD09A", fontSize: 14, fontWeight: "700" }}>95.8 GB Free</Text>
+            </View>
+
+            <View style={[styles.storageBarBg, { backgroundColor: theme.colors.border }]}>
+              <LinearGradient colors={["#1D2B64", "#3B6CE7"]} style={[styles.storageBarFill, { width: "4%" }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
+            </View>
+
+            <View style={styles.storageBreakdown}>
+              <View style={styles.storageLegend}>
+                <View style={[styles.legendDot, { backgroundColor: "#3B6CE7" }]} />
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>Cloud Sync (2GB)</Text>
+              </View>
+              <View style={styles.storageLegend}>
+                <View style={[styles.legendDot, { backgroundColor: "#8CC8E8" }]} />
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>Cache (1.2GB)</Text>
+              </View>
+              <View style={styles.storageLegend}>
+                <View style={[styles.legendDot, { backgroundColor: theme.colors.border }]} />
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>Free</Text>
+              </View>
+            </View>
+
+            <View style={styles.storageActions}>
+              <TouchableOpacity style={[styles.storageBtn, { backgroundColor: theme.colors.border }]}>
+                <Text style={{ color: theme.colors.textPrimary, fontSize: 13, fontWeight: "600" }}>Clear Cache</Text>
               </TouchableOpacity>
-            </BlurView>
+              <TouchableOpacity style={[styles.storageBtn, { backgroundColor: theme.colors.border }]}>
+                <Text style={{ color: theme.colors.textPrimary, fontSize: 13, fontWeight: "600" }}>Manage Space</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
-        {/* 3. Quick Access */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Quick Access</Text>
-          <View style={[styles.cardGroup, { backgroundColor: theme.colors.surface }]}>
-            <ListItem onPress={() => router.push("/(tabs)/projects")} iconName="folder" iconColor="#7C5CFF" iconBg="#7C5CFF15" title="My Projects" subtitle="24 Active" />
-            <ListItem iconName="document-text" iconColor="#3CD09A" iconBg="#3CD09A15" title="Drafts" subtitle="3 Saved" />
-            <ListItem onPress={() => router.push("/(tabs)/exports")} iconName="library" iconColor="#FFB43C" iconBg="#FFB43C15" title="Export Library" subtitle="128 Videos" />
-            <ListItem iconName="heart" iconColor="#FF3B8B" iconBg="#FF3B8B15" title="Favorites" subtitle="12 Items" hasChevron={false} />
-          </View>
+          <ListSection items={NOTIFICATIONS} theme={theme} router={router} />
         </View>
 
-        {/* 5. Editor Preferences */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Editor Preferences</Text>
-          <View style={[styles.cardGroup, { backgroundColor: theme.colors.surface }]}>
-            <ListItem iconName="color-palette" iconColor="#fff" iconBg="#333" title="Theme" rightContent={<Text style={{ color: theme.colors.textMuted }}>Dark</Text>} />
-            <ListItem iconName="save" iconColor="#fff" iconBg="#444" title="Auto Save" rightContent={<Text style={{ color: theme.colors.textMuted }}>On</Text>} />
-            <ListItem iconName="options" iconColor="#fff" iconBg="#555" title="Timeline Settings" />
-            <ListItem iconName="hardware-chip" iconColor="#fff" iconBg="#666" title="Default Export Quality" rightContent={<Text style={{ color: theme.colors.textMuted }}>4K</Text>} hasChevron={false} />
-          </View>
+          <SectionHeader title="Account Information" />
+          <ListSection items={ACCOUNT} theme={theme} router={router} />
         </View>
 
-        {/* 6. Settings */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Settings</Text>
-          <View style={[styles.cardGroup, { backgroundColor: theme.colors.surface }]}>
-            <ListItem iconName="notifications" iconColor="#fff" iconBg="#FF453A" title="Notifications" />
-            <ListItem iconName="globe" iconColor="#fff" iconBg="#0A84FF" title="Language" rightContent={<Text style={{ color: theme.colors.textMuted }}>English</Text>} />
-            <ListItem iconName="lock-closed" iconColor="#fff" iconBg="#30D158" title="Privacy" />
-            <ListItem iconName="shield-checkmark" iconColor="#fff" iconBg="#5E5CE6" title="Security" hasChevron={false} />
-          </View>
+          <SectionHeader title="Privacy & Security" />
+          <ListSection items={SECURITY} theme={theme} router={router} />
         </View>
 
-        {/* 7. Support & 8. About */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Support & About</Text>
-          <View style={[styles.cardGroup, { backgroundColor: theme.colors.surface }]}>
-            <ListItem iconName="help-circle" iconColor="#fff" iconBg="#333" title="Help Center" />
-            <ListItem iconName="bug" iconColor="#fff" iconBg="#FF9F0A" title="Report Bug" />
-            <ListItem iconName="chatbubbles" iconColor="#fff" iconBg="#32ADE6" title="Contact Support" />
-            <ListItem iconName="star" iconColor="#fff" iconBg="#FFD60A" title="Rate App" />
-            <ListItem iconName="information-circle" iconColor="#fff" iconBg="#8E8E93" title="About Veytrix" subtitle="Version 1.0.0" hasChevron={false} />
-          </View>
+          <SectionHeader title="Support & About" />
+          <ListSection items={SUPPORT} theme={theme} router={router} />
         </View>
 
-        {/* 9. Logout */}
-        <TouchableOpacity 
-          style={styles.logoutButton} 
-          activeOpacity={0.8}
-          onPress={() => {
-            reset();
-            // Optional: You could router.replace("/login") but _layout guard handles it.
-          }}
+        {/* 8. LOG OUT */}
+        <AnimatedPressable
+          style={styles.logoutWrapper}
+          onPress={() => reset()}
         >
-          <Ionicons name="log-out-outline" size={20} color="#FF5C5C" />
-          <Text style={styles.logoutText}>Log Out</Text>
-        </TouchableOpacity>
+          <View style={[styles.logoutBtn, { backgroundColor: theme.colors.background }]}>
+            <Ionicons name="log-out" size={20} color="#FF5C5C" style={{ marginRight: 8 }} />
+            <Text style={styles.logoutText}>Log Out</Text>
+          </View>
+        </AnimatedPressable>
+
       </ScrollView>
 
-      <EditProfileSheet 
-        visible={isEditModalVisible} 
-        onClose={() => setEditModalVisible(false)} 
+      {/* EDIT PROFILE MODAL */}
+      <EditProfileSheet
+        visible={isEditModalVisible}
+        onClose={() => setEditModalVisible(false)}
         theme={theme}
         isDark={isDark}
         insets={insets}
@@ -185,13 +392,15 @@ export function ProfilePage() {
   );
 }
 
+// --- MODAL ---
+
 function EditProfileSheet({ visible, onClose, theme, isDark, insets, user }: any) {
   const InputField = ({ label, icon, placeholder, value }: any) => (
     <View style={{ marginBottom: 16 }}>
       <Text style={{ color: theme.colors.textSecondary, fontSize: 13, marginBottom: 8, fontWeight: '500', marginLeft: 4 }}>{label}</Text>
-      <View style={{ 
-        flexDirection: 'row', alignItems: 'center', 
-        backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
+      <View style={{
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: theme.colors.surfaceElevated,
         borderRadius: 16,
         paddingHorizontal: 16,
         height: 56,
@@ -199,7 +408,7 @@ function EditProfileSheet({ visible, onClose, theme, isDark, insets, user }: any
         borderColor: theme.colors.border
       }}>
         <Ionicons name={icon} size={20} color={theme.colors.textMuted} style={{ marginRight: 12 }} />
-        <TextInput 
+        <TextInput
           style={{ flex: 1, color: theme.colors.textPrimary, fontSize: 16 }}
           placeholder={placeholder}
           placeholderTextColor={theme.colors.textMuted}
@@ -212,9 +421,9 @@ function EditProfileSheet({ visible, onClose, theme, isDark, insets, user }: any
   const DropdownField = ({ label, icon, value }: any) => (
     <View style={{ marginBottom: 16 }}>
       <Text style={{ color: theme.colors.textSecondary, fontSize: 13, marginBottom: 8, fontWeight: '500', marginLeft: 4 }}>{label}</Text>
-      <TouchableOpacity style={{ 
-        flexDirection: 'row', alignItems: 'center', 
-        backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
+      <TouchableOpacity style={{
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: theme.colors.surfaceElevated,
         borderRadius: 16,
         paddingHorizontal: 16,
         height: 56,
@@ -234,85 +443,73 @@ function EditProfileSheet({ visible, onClose, theme, isDark, insets, user }: any
         <View style={{ flex: 1, justifyContent: 'flex-end' }}>
           <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFillObject} />
           <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1} />
-          
+
           <View style={{
             height: '90%',
             backgroundColor: theme.colors.background,
             borderTopLeftRadius: 32,
             borderTopRightRadius: 32,
             overflow: 'hidden',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: -10 },
-            shadowOpacity: 0.2,
-            shadowRadius: 20,
-            elevation: 10,
           }}>
-            {/* Header */}
-            <View style={{ 
-              paddingTop: 24, paddingBottom: 16, paddingHorizontal: 24, 
+            <View style={{
+              paddingTop: 24, paddingBottom: 16, paddingHorizontal: 24,
               borderBottomWidth: 1, borderBottomColor: theme.colors.border,
               flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'
             }}>
               <View>
-                <Text style={{ fontSize: 28, fontWeight: '700', color: theme.colors.textPrimary, marginBottom: 4 }}>Edit Profile</Text>
+                <Text style={{ fontSize: 28, fontWeight: '800', color: theme.colors.textPrimary, marginBottom: 4 }}>Edit Profile</Text>
                 <Text style={{ fontSize: 14, color: theme.colors.textSecondary }}>Update your personal information.</Text>
               </View>
-              <TouchableOpacity onPress={onClose} style={{ 
-                width: 36, height: 36, borderRadius: 18, backgroundColor: theme.colors.surfaceElevated || theme.colors.surface, 
-                alignItems: 'center', justifyContent: 'center' 
+              <TouchableOpacity onPress={onClose} style={{
+                width: 36, height: 36, borderRadius: 18, backgroundColor: theme.colors.surfaceElevated,
+                alignItems: 'center', justifyContent: 'center'
               }}>
                 <Ionicons name="close" size={20} color={theme.colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: insets.bottom + 100 }}>
-              {/* Profile Picture */}
               <View style={{ alignItems: 'center', marginBottom: 32 }}>
                 <View style={{ position: 'relative' }}>
                   <Image source={{ uri: "https://i.pravatar.cc/150?u=veytrix_user" }} style={{ width: 100, height: 100, borderRadius: 50, borderWidth: 2, borderColor: theme.colors.border }} />
-                  <View style={{ 
-                    position: 'absolute', bottom: 0, right: 0, 
-                    backgroundColor: theme.colors.primary, 
-                    width: 32, height: 32, borderRadius: 16, 
+                  <View style={{
+                    position: 'absolute', bottom: 0, right: 0,
+                    backgroundColor: "#3B6CE7",
+                    width: 32, height: 32, borderRadius: 16,
                     justifyContent: 'center', alignItems: 'center',
                     borderWidth: 3, borderColor: theme.colors.background
                   }}>
                     <Ionicons name="camera" size={16} color="#fff" />
                   </View>
                 </View>
-                <TouchableOpacity style={{ marginTop: 12 }}>
-                  <Text style={{ color: theme.colors.primary, fontWeight: '600', fontSize: 15 }}>Change Photo</Text>
-                </TouchableOpacity>
               </View>
 
-              {/* Form */}
-              <InputField label="Full Name" icon="person-outline" value={user?.name || "Veytrix User"} />
+              <InputField label="Full Name" icon="person-outline" value={user?.displayName || "Veytrix Creator"} />
               <InputField label="Date of Birth" icon="calendar-outline" value="15 Aug 1994" />
               <DropdownField label="Gender" icon="male-female-outline" value="Male" />
-              <InputField label="Email Address" icon="mail-outline" value={user?.email || "user@veytrix.com"} />
+              <InputField label="Email Address" icon="mail-outline" value={user?.email || "creator@veytrix.com"} />
               <InputField label="Phone Number" icon="call-outline" value="+1 (555) 123-4567" />
               <DropdownField label="Country / Region" icon="globe-outline" value="United States" />
             </ScrollView>
 
-            {/* Bottom Buttons */}
-            <View style={{ 
+            <View style={{
               position: 'absolute', bottom: 0, left: 0, right: 0,
               flexDirection: 'row', padding: 20, paddingBottom: Math.max(insets.bottom, 20),
               backgroundColor: theme.colors.background,
               borderTopWidth: 1, borderTopColor: theme.colors.border,
               gap: 12
             }}>
-              <TouchableOpacity onPress={onClose} style={{ 
-                flex: 1, height: 56, borderRadius: 16, 
-                backgroundColor: theme.colors.surfaceElevated || theme.colors.surface, 
-                justifyContent: 'center', alignItems: 'center' 
+              <TouchableOpacity onPress={onClose} style={{
+                flex: 1, height: 56, borderRadius: 16,
+                backgroundColor: theme.colors.surfaceElevated,
+                justifyContent: 'center', alignItems: 'center'
               }}>
                 <Text style={{ color: theme.colors.textPrimary, fontWeight: '600', fontSize: 16 }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={onClose} style={{ 
-                flex: 2, height: 56, borderRadius: 16, 
-                backgroundColor: theme.colors.primary, 
-                justifyContent: 'center', alignItems: 'center' 
+              <TouchableOpacity onPress={onClose} style={{
+                flex: 2, height: 56, borderRadius: 16,
+                backgroundColor: "#3B6CE7",
+                justifyContent: 'center', alignItems: 'center'
               }}>
                 <Text style={{ color: "#fff", fontWeight: '600', fontSize: 16 }}>Save Changes</Text>
               </TouchableOpacity>
@@ -324,183 +521,72 @@ function EditProfileSheet({ visible, onClose, theme, isDark, insets, user }: any
   );
 }
 
+// --- STYLES ---
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 32,
-    paddingHorizontal: 20,
-  },
-  avatarWrapper: {
-    position: "relative",
-    marginBottom: 16,
-  },
-  avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 2,
-    borderColor: "#26262A",
-  },
-  premiumBadge: {
-    position: "absolute",
-    bottom: 0,
-    right: 4,
-    backgroundColor: "#FFD60A",
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#0A0A0B",
-  },
-  userName: {
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  userEmail: {
-    fontSize: 14,
-    marginBottom: 16,
-  },
-  editButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-  },
-  editButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 24,
-  },
-  gridCard: {
-    width: "48%",
-    padding: 16,
-    borderRadius: 20,
-  },
-  gridIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  gridValue: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  gridLabel: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  section: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 12,
-    marginLeft: 12,
-  },
-  cardGroup: {
-    borderRadius: 24,
-    overflow: "hidden",
-  },
-  listItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  iconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  listTextContainer: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  listTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  listSubtitle: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  rightContent: {
-    marginRight: 8,
-  },
-  subscriptionContainer: {
-    borderRadius: 24,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(124, 92, 255, 0.2)",
-  },
-  subscriptionContent: {
-    padding: 20,
-  },
-  subHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  subTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#fff",
-    marginBottom: 4,
-  },
-  subCredits: {
-    fontSize: 14,
-    color: "#B0A0FF",
-  },
-  upgradeButton: {
-    backgroundColor: "#7C5CFF",
-    paddingVertical: 12,
-    borderRadius: 16,
-    alignItems: "center",
-  },
-  upgradeButtonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  logoutButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: 20,
-    marginTop: 10,
-    paddingVertical: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255, 92, 92, 0.3)",
-  },
-  logoutText: {
-    color: "#FF5C5C",
-    fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 8,
-  },
+  container: { flex: 1 },
+  header: { alignItems: "center", paddingHorizontal: 20, marginBottom: 32 },
+  avatarWrapper: { position: "relative", marginBottom: 20 },
+  avatar: { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: "rgba(59,108,231,0.2)" },
+  verifiedBadge: { position: "absolute", bottom: 4, right: 4 },
+  premiumBadge: { position: "absolute", top: -8, alignSelf: "center", backgroundColor: "#FFD60A", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
+  premiumBadgeText: { color: "#000", fontSize: 10, fontWeight: "800", letterSpacing: 1 },
+  avatarEditBtn: { position: "absolute", left: -8, bottom: 12, backgroundColor: "rgba(0,0,0,0.6)", padding: 8, borderRadius: 16 },
+  userName: { fontSize: 24, fontWeight: "800", marginBottom: 4, letterSpacing: -0.5 },
+  userEmail: { fontSize: 15, marginBottom: 12 },
+  headerInfoRow: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
+  headerActionRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  primaryBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 999 },
+  primaryBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  secondaryBtn: { flexDirection: "row", alignItems: "center", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 999 },
+  secondaryBtnText: { fontSize: 14, fontWeight: "600" },
+
+  section: { marginBottom: 32 },
+  sectionTitle: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 12, marginLeft: 32 },
+
+  overviewGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 20, gap: 12 },
+  statCard: { width: "23%", padding: 12, borderRadius: 16, alignItems: "center", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2 },
+  statValue: { fontSize: 16, fontWeight: "800", marginBottom: 2 },
+  statLabel: { fontSize: 10, fontWeight: "600", textAlign: "center" },
+
+  subCard: { marginHorizontal: 20, borderRadius: 24, overflow: "hidden", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10 },
+  subContent: { padding: 24 },
+  subIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#fff", justifyContent: "center", alignItems: "center" },
+  subFeatures: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 24, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 16, padding: 16 },
+  subFeatItem: { alignItems: "center" },
+  subFeatVal: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  subFeatLabel: { color: "rgba(255,255,255,0.7)", fontSize: 12, marginTop: 4 },
+  subFeatDivider: { width: 1, height: 30, backgroundColor: "rgba(255,255,255,0.2)" },
+  subActionRow: { flexDirection: "row", gap: 12, marginTop: 24 },
+  subBtnLight: { flex: 1, backgroundColor: "#fff", paddingVertical: 14, borderRadius: 16, alignItems: "center" },
+  subBtnDark: { flex: 1, backgroundColor: "rgba(0,0,0,0.2)", paddingVertical: 14, borderRadius: 16, alignItems: "center" },
+
+  storageCard: { marginHorizontal: 20, padding: 20, borderRadius: 20 },
+  storageBarBg: { height: 8, borderRadius: 4, overflow: "hidden", marginBottom: 16 },
+  storageBarFill: { height: "100%", borderRadius: 4 },
+  storageBreakdown: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 24 },
+  storageLegend: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  storageActions: { flexDirection: "row", gap: 12 },
+  storageBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: "center" },
+
+  insightCard: { width: 140, padding: 16, borderRadius: 16, marginLeft: 20 },
+
+  cardGroup: { marginHorizontal: 20, borderRadius: 20, overflow: "hidden" },
+  listItem: { flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 16 },
+  listIconBox: { width: 32, height: 32, borderRadius: 10, justifyContent: "center", alignItems: "center", marginRight: 12 },
+  listTextContainer: { flex: 1, justifyContent: "center" },
+  listTitle: { fontSize: 15, fontWeight: "600" },
+  listSubtitle: { fontSize: 12, marginTop: 2 },
+
+  timelineCard: { marginHorizontal: 20, padding: 20, borderRadius: 20 },
+  timelineItem: { flexDirection: "row", marginBottom: 16 },
+  timelineLeft: { alignItems: "center", marginRight: 12, width: 20 },
+  timelineDot: { width: 12, height: 12, borderRadius: 6, zIndex: 1 },
+  timelineLine: { position: "absolute", top: 12, width: 2, height: "150%" },
+  timelineContent: { flex: 1 },
+
+  logoutWrapper: { paddingHorizontal: 20, marginTop: 24 },
+  logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 18, borderRadius: 20, borderWidth: 2, borderColor: "rgba(255, 92, 92, 0.3)" },
+  logoutText: { color: "#FF5C5C", fontSize: 16, fontWeight: "700" },
 });

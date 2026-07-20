@@ -31,7 +31,7 @@ function CreateTabButton() {
       >
         <Animated.View style={[styles.createShadow, { transform: [{ scale }] }]}>
           <LinearGradient
-            colors={["#8B6BFF", "#FF3B8B"]}
+            colors={["#1D2B64", "#3B6CE7"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.createBtn}
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   },
   createShadow: {
     marginTop: -22,
-    shadowColor: "#7C5CFF",
+    shadowColor: "#3B6CE7",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 16,

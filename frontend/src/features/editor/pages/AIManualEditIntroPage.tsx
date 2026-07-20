@@ -52,12 +52,12 @@ export function AIManualEditIntroPage() {
         {/* Hero illustration */}
         <Animated.View style={[styles.heroWrap, { opacity, transform: [{ translateY: translate }] }]}>
           <LinearGradient
-            colors={isDark ? ["#221546", "#3A1A50"] : ["#EEE7FF", "#FFDDEA"]}
+            colors={isDark ? ["#1D2B64", "#3B6CE7"] : ["#3B6CE7", "#8CC8E8"]}
             style={styles.heroBg}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
-            <LinearGradient colors={["#8B6BFF", "#FF3B8B"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroIcon}>
+            <LinearGradient colors={["#1D2B64", "#3B6CE7"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroIcon}>
               <Ionicons name="sparkles" size={56} color="#fff" />
             </LinearGradient>
             <View style={[styles.floatChip, styles.chipTL, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.border }]}>
@@ -65,11 +65,11 @@ export function AIManualEditIntroPage() {
               <Text style={[styles.chipText, { color: theme.colors.textPrimary }]}>Trim</Text>
             </View>
             <View style={[styles.floatChip, styles.chipBR, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.border }]}>
-              <Ionicons name="musical-notes" size={13} color="#FF3B8B" />
+              <Ionicons name="musical-notes" size={13} color="#3B6CE7" />
               <Text style={[styles.chipText, { color: theme.colors.textPrimary }]}>Beat sync</Text>
             </View>
             <View style={[styles.floatChip, styles.chipBL, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.border }]}>
-              <Ionicons name="text" size={13} color="#3CD09A" />
+              <Ionicons name="text" size={13} color="#8CC8E8" />
               <Text style={[styles.chipText, { color: theme.colors.textPrimary }]}>Captions</Text>
             </View>
           </LinearGradient>
@@ -92,7 +92,7 @@ export function AIManualEditIntroPage() {
               style={[styles.featureRow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.md }]}
             >
               <View style={styles.featureIconWrap}>
-                <LinearGradient colors={["#8B6BFF", "#FF3B8B"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.featureIconBg}>
+                <LinearGradient colors={["#1D2B64", "#3B6CE7"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.featureIconBg}>
                   <Ionicons name="checkmark" size={14} color="#fff" />
                 </LinearGradient>
               </View>
@@ -104,13 +104,13 @@ export function AIManualEditIntroPage() {
 
         {/* Info card */}
         <LinearGradient
-          colors={isDark ? ["#161029", "#1F1030"] : ["#F5F1FF", "#FFE6F0"]}
+          colors={isDark ? ["#E6F2F8", "#FFFFFF"] : ["#E6F2F8", "#FFFFFF"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.infoCard, { borderRadius: theme.radius.lg, borderColor: theme.colors.border }]}
         >
           <View style={styles.infoHeader}>
-            <LinearGradient colors={["#8B6BFF", "#FF3B8B"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.infoBadge}>
+            <LinearGradient colors={["#1D2B64", "#3B6CE7"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.infoBadge}>
               <Ionicons name="flash" size={14} color="#fff" />
             </LinearGradient>
             <Text style={[styles.infoTitle, { color: theme.colors.textPrimary }]}>Pro-grade editor</Text>
@@ -139,7 +139,7 @@ export function AIManualEditIntroPage() {
         >
           <Animated.View style={{ transform: [{ scale: btnScale }] }}>
             <LinearGradient
-              colors={["#8B6BFF", "#FF3B8B"]}
+              colors={["#1D2B64", "#3B6CE7"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.ctaBtn}
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     borderRadius: 54,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#7C5CFF",
+    shadowColor: "#8CC8E8",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.4,
     shadowRadius: 20,
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    shadowColor: "#7C5CFF",
+    shadowColor: "#8CC8E8",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.35,
     shadowRadius: 18,

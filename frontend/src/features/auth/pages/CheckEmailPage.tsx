@@ -27,7 +27,7 @@ export function CheckEmailPage() {
         
         <View style={styles.header}>
           <LinearGradient
-            colors={["#3CD09A", "#7C5CFF"]}
+            colors={["#1D2B64", "#3B6CE7"]}
             style={styles.iconContainer}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 24,
-    shadowColor: "#3CD09A",
+    shadowColor: "#3B6CE7",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 16,
