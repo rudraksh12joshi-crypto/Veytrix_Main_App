@@ -1,6 +1,6 @@
 import { Redirect } from "expo-router";
 
-// Entry - future auth gate will branch here. For now sends to the dashboard.
+// Entry - redirects to new onboarding flow for first-time users.
 export default function Index() {
-  return <Redirect href="/(tabs)/dashboard" />;
+  return <Redirect href="/onboarding" />;
 }

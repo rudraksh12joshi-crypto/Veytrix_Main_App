@@ -32,7 +32,7 @@ export function AIManualEditIntroPage() {
     ]).start();
   }, [opacity, translate]);
 
-  const startEditing = () => router.push("/editor/new");
+  const startEditing = () => router.push("/ai-manual-edit/upload");
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={{ flex: 1, backgroundColor: theme.colors.background }} testID="ai-manual-edit-page">

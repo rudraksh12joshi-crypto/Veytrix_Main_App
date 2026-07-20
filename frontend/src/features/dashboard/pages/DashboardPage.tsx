@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef } from "react";
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useTheme } from "@/src/theme";
@@ -94,8 +94,7 @@ export function DashboardPage() {
               activeOpacity={0.75}
               style={[styles.avatar, { borderColor: theme.colors.border }]}
             >
-              <LinearGradient colors={["#7C5CFF", "#FF3B8B"]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-              <Text style={styles.avatarText}>E</Text>
+              <Image source={{ uri: "https://i.pravatar.cc/150?u=veytrix_user" }} style={StyleSheet.absoluteFill} />
             </TouchableOpacity>
           </View>
         </View>
@@ -145,7 +144,7 @@ export function DashboardPage() {
         />
 
         {/* Drafts */}
-        <SectionHeader title="Drafts" actionLabel="View all" onAction={() => router.push("/drafts")} />
+        <SectionHeader title="Drafts" actionLabel="View all" onAction={() => router.push("/projects/drafts")} />
         <RecentProjectsRail
           items={DRAFTS}
           emptyLabel="No drafts yet"
@@ -153,7 +152,7 @@ export function DashboardPage() {
         />
 
         {/* Recent Exports */}
-        <SectionHeader title="Recent Exports" actionLabel="Library" onAction={() => router.push("/export-library")} />
+        <SectionHeader title="Recent Exports" actionLabel="Library" onAction={() => router.push("/projects/export-library")} />
         <RecentProjectsRail
           items={EXPORTS}
           emptyLabel="No exports yet"

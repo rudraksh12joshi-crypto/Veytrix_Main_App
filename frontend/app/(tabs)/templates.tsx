@@ -1,2 +1,3 @@
-import { TemplatesPage } from "@/src/features/templates";
-export default TemplatesPage;
+export default function TemplatesScreen() {
+  return null;
+}

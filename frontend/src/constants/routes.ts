@@ -15,10 +15,10 @@ export const ROUTES = {
   EDITOR: (projectId: string) => `/editor/${projectId}`,
 
   // Top-level
-  DRAFTS: "/drafts",
-  EXPORT_LIBRARY: "/export-library",
+  DRAFTS: "/projects/drafts",
+  EXPORT_LIBRARY: "/projects/export-library",
   SETTINGS: "/settings",
-  SUBSCRIPTION: "/subscription",
+  SUBSCRIPTION: "/profile/subscription",
   NOTIFICATIONS: "/notifications",
   ANALYTICS: "/analytics",
 } as const;
