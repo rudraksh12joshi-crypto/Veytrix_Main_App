@@ -43,10 +43,14 @@ export function EditorPage() {
   const { videoUri, duration } = useLocalSearchParams<{ videoUri?: string; duration?: string }>();
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
 
+  const PIXELS_PER_MS = 0.05;
+  const THUMBNAIL_WIDTH = 60;
+
   const videoRef = useRef<Video>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const lastStateUpdate = useRef(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [previewMuted, setPreviewMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(duration ? parseInt(duration) : 0);
 
@@ -162,6 +166,7 @@ export function EditorPage() {
           <Video
             ref={videoRef}
             source={{ uri: videoUri }}
+            isMuted={previewMuted}
             style={StyleSheet.absoluteFill}
             resizeMode={ResizeMode.CONTAIN}
             shouldPlay={false}
@@ -169,8 +174,8 @@ export function EditorPage() {
             progressUpdateIntervalMillis={16}
             onPlaybackStatusUpdate={(status) => {
               if (status.isLoaded) {
-                if (status.durationMillis && scrollViewRef.current) {
-                  const scrollX = (status.positionMillis / status.durationMillis) * 300;
+                if (status.durationMillis && scrollViewRef.current && isPlaying) {
+                  const scrollX = status.positionMillis * PIXELS_PER_MS;
                   scrollViewRef.current.scrollTo({ x: scrollX, animated: false });
                 }
 
@@ -233,7 +238,7 @@ export function EditorPage() {
   );
 
   const renderTimeline = () => (
-    <View style={[styles.timelineContainer, { backgroundColor: isDark ? "#141416" : "#F2F2F7" }]}>
+    <View style={[styles.timelineContainer, { backgroundColor: "#141416" }]}>
       <View style={styles.timelineBody}>
         {/* Fixed Left Column */}
         <View style={styles.fixedLeftColumn}>
@@ -264,9 +269,13 @@ export function EditorPage() {
               <Ionicons name="film" size={20} color="#8E8E93" />
               <View style={styles.plusBadge}><Ionicons name="add" size={10} color="#000" /></View>
             </View>
-            <View style={[styles.trackIconWrap, { height: 24 }]}>
-              <Ionicons name="volume-high" size={20} color="#8E8E93" />
-            </View>
+            <TouchableOpacity 
+              activeOpacity={0.8} 
+              onPress={() => setPreviewMuted(!previewMuted)}
+              style={[styles.trackIconWrap, { height: 24 }]}
+            >
+              <Ionicons name={previewMuted ? "volume-mute" : "volume-high"} size={20} color="#8E8E93" />
+            </TouchableOpacity>
             <View style={{ height: 24 }} />
           </View>
         </View>
@@ -276,7 +285,21 @@ export function EditorPage() {
           ref={scrollViewRef}
           horizontal 
           showsHorizontalScrollIndicator={false} 
-          contentContainerStyle={styles.timelineScroll}
+          contentContainerStyle={[styles.timelineScroll, { paddingLeft: 5, paddingRight: 200 }]}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            if (!isPlaying) {
+              const scrollX = e.nativeEvent.contentOffset.x;
+              const newTimeMs = Math.max(0, scrollX / PIXELS_PER_MS);
+              if (videoRef.current) {
+                videoRef.current.setPositionAsync(newTimeMs);
+              }
+              if (audioRef.current) {
+                audioRef.current.setPositionAsync(newTimeMs);
+              }
+              setCurrentTime(newTimeMs);
+            }
+          }}
         >
           <View style={styles.tracks}>
             {useMemo(() => (
@@ -293,7 +316,7 @@ export function EditorPage() {
                       <View style={[
                         styles.vnClip, 
                         { 
-                          width: (musicTrack.duration / totalDuration) * 300 || 200, 
+                          width: Math.max(10, musicTrack.duration * PIXELS_PER_MS) || 200, 
                           backgroundColor: "#3A2E7A", 
                           borderColor: selectedTimelineClip === "music" ? "#fff" : "transparent",
                           borderWidth: selectedTimelineClip === "music" ? 2 : 0,
@@ -310,7 +333,7 @@ export function EditorPage() {
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity activeOpacity={0.8} onPress={() => setMusicSheetVisible(true)}>
-                      <View style={[styles.vnClip, { width: 200, backgroundColor: "#2A2A35" }]}>
+                      <View style={[styles.vnClip, { width: totalDuration * PIXELS_PER_MS || 200, backgroundColor: "#2A2A35" }]}>
                         <Text style={styles.vnPlaceholderText}>Tap to add music</Text>
                       </View>
                     </TouchableOpacity>
@@ -318,35 +341,27 @@ export function EditorPage() {
                 </View>
 
                 <View style={[styles.vnTrack, { height: 32 }]}>
-                  <View style={[styles.vnClip, { width: 250, backgroundColor: "#2A2A35" }]}>
+                  <View style={[styles.vnClip, { width: totalDuration * PIXELS_PER_MS || 250, backgroundColor: "#2A2A35" }]}>
                     <Text style={styles.vnPlaceholderText}>Tap to add subtitle</Text>
                   </View>
                 </View>
 
                 <View style={[styles.vnTrack, { height: 32 }]}>
-                  <View style={[styles.vnClip, { width: 300, backgroundColor: "#2A2A35" }]}>
+                  <View style={[styles.vnClip, { width: totalDuration * PIXELS_PER_MS || 300, backgroundColor: "#2A2A35" }]}>
                     <Text style={styles.vnPlaceholderText}>Tap to add sticker / Overlay</Text>
                   </View>
                 </View>
 
                 <View style={[styles.vnTrack, { height: 60 }]}>
-                  <View style={[styles.vnVideoClip, { width: 300 }]}>
+                  <View style={[styles.vnVideoClip, { width: totalDuration * PIXELS_PER_MS || 300 }]}>
                     <View style={styles.vnThumbnails}>
-                      {videoUri ? (
-                        <>
-                          <Image source={{uri: videoUri}} style={styles.vnThumb} />
-                          <Image source={{uri: videoUri}} style={styles.vnThumb} />
-                          <Image source={{uri: videoUri}} style={styles.vnThumb} />
-                          <Image source={{uri: videoUri}} style={styles.vnThumb} />
-                        </>
-                      ) : (
-                        <>
-                          <Image source={{uri: "https://images.unsplash.com/photo-1517404215738-15263e9f9178"}} style={styles.vnThumb} />
-                          <Image source={{uri: "https://images.unsplash.com/photo-1517404215738-15263e9f9178"}} style={styles.vnThumb} />
-                          <Image source={{uri: "https://images.unsplash.com/photo-1517404215738-15263e9f9178"}} style={styles.vnThumb} />
-                          <Image source={{uri: "https://images.unsplash.com/photo-1517404215738-15263e9f9178"}} style={styles.vnThumb} />
-                        </>
-                      )}
+                      {[...Array(Math.max(1, Math.ceil((totalDuration * PIXELS_PER_MS) / THUMBNAIL_WIDTH)))].map((_, i) => (
+                        <Image 
+                          key={i} 
+                          source={{uri: videoUri || "https://images.unsplash.com/photo-1517404215738-15263e9f9178"}} 
+                          style={styles.vnThumb} 
+                        />
+                      ))}
                     </View>
                     <View style={styles.vnYellowBorder} />
                     <View style={styles.vnClipTime}>
@@ -356,15 +371,15 @@ export function EditorPage() {
                 </View>
                 
                 <View style={[styles.vnTrack, { height: 24 }]}>
-                  <View style={styles.vnWaveformMock}>
+                  <View style={[styles.vnWaveformMock, { width: totalDuration * PIXELS_PER_MS || 300 }]}>
                     <View style={styles.vnWaveformShape} />
                   </View>
                 </View>
 
                 <View style={styles.vnRuler}>
-                  {[...Array(15)].map((_, i) => (
-                    <View key={i} style={styles.vnRulerMark}>
-                      <Text style={styles.vnRulerText}>{formatTime((i * 80 / 300) * totalDuration)}</Text>
+                  {[...Array(Math.max(1, Math.ceil(totalDuration / 1000) + 1))].map((_, i) => (
+                    <View key={i} style={[styles.vnRulerMark, { width: 1000 * PIXELS_PER_MS }]}>
+                      <Text style={styles.vnRulerText}>{formatTime(i * 1000)}</Text>
                       <View style={styles.vnRulerDot} />
                     </View>
                   ))}
@@ -404,10 +419,10 @@ export function EditorPage() {
               <Ionicons 
                 name={tool.icon as any} 
                 size={22} 
-                color={selectedTool === tool.id ? theme.colors.primary : theme.colors.textPrimary} 
+                color={selectedTool === tool.id ? theme.colors.primary : "#fff"} 
               />
             </View>
-            <Text style={[styles.toolLabel, { color: selectedTool === tool.id ? theme.colors.primary : theme.colors.textSecondary }]}>
+            <Text style={[styles.toolLabel, { color: selectedTool === tool.id ? theme.colors.primary : "#A0A0A0" }]}>
               {tool.label}
             </Text>
           </TouchableOpacity>
@@ -423,17 +438,17 @@ export function EditorPage() {
       return (
         <View style={[styles.propertiesPanel, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           <View style={styles.panelHeader}>
-            <Text style={[styles.panelTitle, { color: theme.colors.textPrimary }]}>
+            <Text style={[styles.panelTitle, { color: "#fff" }]}>
               Music: {musicTrack?.title}
             </Text>
             <TouchableOpacity onPress={() => setSelectedTimelineClip(null)}>
-              <Ionicons name="close-circle" size={24} color={theme.colors.textMuted} />
+              <Ionicons name="close-circle" size={24} color="#666" />
             </TouchableOpacity>
           </View>
           <View style={styles.panelContent}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 16 }}>
               <View style={{ width: 150 }}>
-                <Text style={{ color: theme.colors.textSecondary, marginBottom: 12 }}>Volume</Text>
+                <Text style={{ color: "#A0A0A0", marginBottom: 12 }}>Volume</Text>
                 <View style={styles.sliderTrack}>
                   <View style={[styles.sliderFill, { backgroundColor: theme.colors.primary, width: "100%" }]} />
                   <View style={[styles.sliderThumb, { backgroundColor: "#fff", left: "100%" }]} />
@@ -441,7 +456,7 @@ export function EditorPage() {
               </View>
 
               <View style={{ width: 100 }}>
-                <Text style={{ color: theme.colors.textSecondary, marginBottom: 12 }}>Fade In</Text>
+                <Text style={{ color: "#A0A0A0", marginBottom: 12 }}>Fade In</Text>
                 <View style={styles.sliderTrack}>
                   <View style={[styles.sliderFill, { backgroundColor: theme.colors.primary, width: "0%" }]} />
                   <View style={[styles.sliderThumb, { backgroundColor: "#fff", left: "0%" }]} />
@@ -449,7 +464,7 @@ export function EditorPage() {
               </View>
 
               <View style={{ width: 100 }}>
-                <Text style={{ color: theme.colors.textSecondary, marginBottom: 12 }}>Fade Out</Text>
+                <Text style={{ color: "#A0A0A0", marginBottom: 12 }}>Fade Out</Text>
                 <View style={styles.sliderTrack}>
                   <View style={[styles.sliderFill, { backgroundColor: theme.colors.primary, width: "0%" }]} />
                   <View style={[styles.sliderThumb, { backgroundColor: "#fff", left: "0%" }]} />
@@ -457,11 +472,11 @@ export function EditorPage() {
               </View>
 
               <TouchableOpacity 
-                style={{ alignItems: "center", justifyContent: "center", padding: 12, backgroundColor: theme.colors.surface, borderRadius: 12 }}
+                style={{ alignItems: "center", justifyContent: "center", padding: 12, backgroundColor: "#2A2A2D", borderRadius: 12 }}
                 onPress={() => setMusicSheetVisible(true)}
               >
-                <Ionicons name="sync-outline" size={20} color={theme.colors.textPrimary} />
-                <Text style={{ color: theme.colors.textPrimary, fontSize: 12, marginTop: 4 }}>Replace</Text>
+                <Ionicons name="sync-outline" size={20} color="#fff" />
+                <Text style={{ color: "#fff", fontSize: 12, marginTop: 4 }}>Replace</Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
@@ -483,24 +498,24 @@ export function EditorPage() {
     return (
       <View style={[styles.propertiesPanel, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <View style={styles.panelHeader}>
-          <Text style={[styles.panelTitle, { color: theme.colors.textPrimary }]}>
+          <Text style={[styles.panelTitle, { color: "#fff" }]}>
             {EDITING_TOOLS.find(t => t.id === selectedTool)?.label || "Properties"}
           </Text>
           <TouchableOpacity onPress={() => setSelectedTool(null)}>
-            <Ionicons name="close-circle" size={24} color={theme.colors.textMuted} />
+            <Ionicons name="close-circle" size={24} color="#666" />
           </TouchableOpacity>
         </View>
         <View style={styles.panelContent}>
           {/* Mock content for Speed as an example */}
-          <Text style={{ color: theme.colors.textSecondary, marginBottom: 12 }}>1.0x (Normal)</Text>
+          <Text style={{ color: "#A0A0A0", marginBottom: 12 }}>1.0x (Normal)</Text>
           <View style={styles.sliderTrack}>
             <View style={[styles.sliderFill, { backgroundColor: theme.colors.primary, width: "25%" }]} />
             <View style={[styles.sliderThumb, { backgroundColor: "#fff", left: "25%" }]} />
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-            <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>0.25x</Text>
-            <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>1x</Text>
-            <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>4x</Text>
+            <Text style={{ color: "#666", fontSize: 12 }}>0.25x</Text>
+            <Text style={{ color: "#666", fontSize: 12 }}>1x</Text>
+            <Text style={{ color: "#666", fontSize: 12 }}>4x</Text>
           </View>
         </View>
       </View>
