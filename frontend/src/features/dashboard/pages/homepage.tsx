@@ -8,6 +8,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/src/theme";
 import { QuickActionsRow, QuickAction } from "../components/QuickActionsRow";
 import { ProjectRailItem, RecentProjectsRail } from "../components/RecentProjectsRail";
+import { useProjectsStore } from "@/src/store/projects.store";
+import { useExportStore } from "@/src/store/export.store";
 
 const { width } = Dimensions.get("window");
 
@@ -18,29 +20,12 @@ const HERO_CARDS = [
   { id: "3", title: "Trending Templates", subtitle: "Create viral content with one tap.", cta: "Browse", icon: "color-wand", type: "template" },
 ];
 
-const RECENT_PROJECTS: ProjectRailItem[] = [
-  { id: "1", title: "Summer Vlog", lastEditedLabel: "Edited 2h ago", duration: "1:24", resolution: "4K", frameRatio: "16:9", gradient: ["#1D2B64", "#3B6CE7"] },
-  { id: "2", title: "Product Reel", lastEditedLabel: "Yesterday", duration: "0:38", resolution: "1080p", frameRatio: "9:16", gradient: ["#3B6CE7", "#8CC8E8"] },
-  { id: "3", title: "Travel Cut", lastEditedLabel: "3 days ago", duration: "2:12", resolution: "4K", frameRatio: "16:9", gradient: ["#1D2B64", "#3B6CE7"] },
-];
+const RECENT_PROJECTS: ProjectRailItem[] = [];
 
-const DRAFTS: ProjectRailItem[] = [
-  { id: "d1", title: "Untitled draft", lastEditedLabel: "Auto-saved 5m ago", duration: "0:12", resolution: "1080p", frameRatio: "9:16", gradient: ["#3B6CE7", "#8CC8E8"] },
-  { id: "d2", title: "Cafe morning", lastEditedLabel: "Yesterday", duration: "0:44", resolution: "4K", frameRatio: "16:9", gradient: ["#1D2B64", "#3B6CE7"] },
-];
+const DRAFTS: ProjectRailItem[] = [];
 
-const EXPORTS: ProjectRailItem[] = [
-  { id: "e1", title: "Reel v3", lastEditedLabel: "Exported 1h ago", duration: "0:59", resolution: "1080p", frameRatio: "9:16", gradient: ["#3B6CE7", "#8CC8E8"] },
-  { id: "e2", title: "Story v1", lastEditedLabel: "Exported today", duration: "0:15", resolution: "1080p", frameRatio: "9:16", gradient: ["#1D2B64", "#3B6CE7"] },
-];
+const EXPORTS: ProjectRailItem[] = [];
 
-const STATS = [
-  { label: "Projects", value: "24", icon: "folder-open" },
-  { label: "Exports", value: "86", icon: "share" },
-  { label: "Mins Saved", value: "120", icon: "time" },
-  { label: "AI Credits", value: "450", icon: "planet" },
-  { label: "Storage", value: "1.2GB", icon: "cloud" },
-];
 
 const RECENT_ASSETS = [
   { id: "1", title: "Lo-Fi Beats", type: "Music", icon: "musical-notes" },
@@ -68,11 +53,7 @@ const LEARNING = [
   { id: "3", title: "Keyboard shortcuts", type: "Guide" },
 ];
 
-const ACTIVITIES = [
-  { id: "1", action: "Export Completed", target: "Summer Vlog", time: "2h ago", icon: "checkmark-circle" },
-  { id: "2", action: "Project Created", target: "Product Reel", time: "Yesterday", icon: "add-circle" },
-  { id: "3", action: "AI Render Finished", target: "Travel Cut", time: "3 days ago", icon: "sparkles" },
-];
+const ACTIVITIES: any[] = [];
 
 // --- ANIMATION HOOK ---
 function useEnter() {
@@ -184,9 +165,20 @@ function HeroSlider({ theme, router }: { theme: any, router: any }) {
 }
 
 function QuickStatsRow({ theme }: { theme: any }) {
+  const projectsCount = useProjectsStore((state) => state.projects.length);
+  const exportsCount = useExportStore((state) => state.jobs.length);
+
+  const stats = [
+    { label: "Projects", value: projectsCount.toString(), icon: "folder-open" },
+    { label: "Exports", value: exportsCount.toString(), icon: "share" },
+    { label: "Mins Saved", value: "0 min", icon: "time" },
+    { label: "AI Credits", value: "0 Credits", icon: "planet" },
+    { label: "Storage", value: "0 GB", icon: "cloud" },
+  ];
+
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
-      {STATS.map((stat, i) => (
+      {stats.map((stat, i) => (
         <View key={i} style={[styles.statCard, { backgroundColor: theme.colors.surfaceElevated, borderRadius: theme.radius.lg }]}>
           <Ionicons name={stat.icon as any} size={18} color={theme.colors.primary} style={{ marginBottom: 8 }} />
           <Text style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: "800" }}>{stat.value}</Text>
@@ -281,7 +273,7 @@ function StorageCard({ theme }: { theme: any }) {
           </View>
           <View>
             <Text style={{ color: theme.colors.textPrimary, fontSize: 15, fontWeight: "700" }}>Cloud Storage</Text>
-            <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 2 }}>1.2 GB / 5.0 GB Used</Text>
+            <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 2 }}>0 GB / 10 GB Used</Text>
           </View>
         </View>
         <TouchableOpacity>
@@ -289,7 +281,7 @@ function StorageCard({ theme }: { theme: any }) {
         </TouchableOpacity>
       </View>
       <View style={[styles.progressBarBg, { backgroundColor: theme.colors.border }]}>
-        <LinearGradient colors={["#3B6CE7", "#8CC8E8"]} style={[styles.progressBarFill, { width: "24%" }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
+        <LinearGradient colors={["#3B6CE7", "#8CC8E8"]} style={[styles.progressBarFill, { width: "0%" }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
       </View>
     </View>
   );
@@ -317,6 +309,15 @@ function SubscriptionCard({ theme }: { theme: any }) {
 }
 
 function ActivityList({ theme }: { theme: any }) {
+  if (ACTIVITIES.length === 0) {
+    return (
+      <View style={{ marginHorizontal: 20, padding: 32, alignItems: "center", justifyContent: "center", borderWidth: 1, borderStyle: "dashed", borderColor: theme.colors.border, borderRadius: theme.radius.lg, backgroundColor: theme.colors.surface, marginBottom: 24 }}>
+        <Text style={{ fontSize: 32, marginBottom: 12 }}>📈</Text>
+        <Text style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: "700", marginBottom: 6 }}>No Activity Yet</Text>
+        <Text style={{ color: theme.colors.textMuted, fontSize: 14, textAlign: "center" }}>Your editing activity will appear here.</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.activityList}>
       {ACTIVITIES.map((act) => (
@@ -407,8 +408,17 @@ export function DashboardPage() {
         <AIToolsRail theme={theme} router={router} />
 
         {/* Recent Projects */}
-        <SectionHeader title="Recent Projects" actionLabel="See all" onAction={() => router.push("/(tabs)/projects")} />
-        <RecentProjectsRail items={RECENT_PROJECTS} emptyLabel="No recent projects" onPressItem={(id) => router.push(`/editor/${id}`)} />
+        <SectionHeader title="Recent Projects" actionLabel={RECENT_PROJECTS.length > 0 ? "See all" : undefined} onAction={() => router.push("/(tabs)/projects")} />
+        <RecentProjectsRail 
+          items={RECENT_PROJECTS} 
+          emptyLabel="No recent projects"
+          emptyIcon="📁"
+          emptyTitle="No Projects Yet"
+          emptyDesc="Create your first project to start editing."
+          emptyCta="Create New Project"
+          onEmptyCtaPress={() => router.push("/editor/new")} 
+          onPressItem={(id) => router.push(`/editor/${id}`)} 
+        />
 
         {/* Recently Used Assets */}
         <SectionHeader title="Recently Used Assets" actionLabel="View library" />
@@ -433,11 +443,25 @@ export function DashboardPage() {
         <ActivityList theme={theme} />
 
         {/* Extra spacing for drafts/exports just to keep them available as requested, but placed lower */}
-        <SectionHeader title="Drafts" actionLabel="View all" onAction={() => router.push("/projects/drafts")} />
-        <RecentProjectsRail items={DRAFTS} emptyLabel="No drafts yet" onPressItem={(id) => router.push(`/editor/${id}`)} />
+        <SectionHeader title="Drafts" actionLabel={DRAFTS.length > 0 ? "View all" : undefined} onAction={() => router.push("/projects/drafts")} />
+        <RecentProjectsRail 
+          items={DRAFTS} 
+          emptyLabel="No drafts yet"
+          emptyIcon="📝"
+          emptyTitle="No Drafts Yet"
+          emptyDesc="Your unfinished projects will appear here." 
+          onPressItem={(id) => router.push(`/editor/${id}`)} 
+        />
 
-        <SectionHeader title="Recent Exports" actionLabel="Library" onAction={() => router.push("/projects/export-library")} />
-        <RecentProjectsRail items={EXPORTS} emptyLabel="No exports yet" onPressItem={(id) => router.push(`/editor/${id}`)} />
+        <SectionHeader title="Recent Exports" actionLabel={EXPORTS.length > 0 ? "Library" : undefined} onAction={() => router.push("/projects/export-library")} />
+        <RecentProjectsRail 
+          items={EXPORTS} 
+          emptyLabel="No exports yet"
+          emptyIcon="🎬"
+          emptyTitle="No Exports Yet"
+          emptyDesc="Exported videos will appear here." 
+          onPressItem={(id) => router.push(`/editor/${id}`)} 
+        />
 
       </ScrollView>
       

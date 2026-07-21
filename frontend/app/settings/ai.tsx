@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/src/theme";
 
 const AI_SETTINGS = [
-  { icon: "planet", title: "AI Credits", value: "850" },
+  { icon: "planet", title: "AI Credits", value: "0" },
   { icon: "cube", title: "Default AI Model", value: "Veytrix-V3" },
   { icon: "star", title: "AI Quality", value: "High" },
   { icon: "videocam", title: "AI Video Generation", value: "Enabled" },
@@ -68,6 +68,12 @@ export default function AISettingsScreen() {
         <View style={{ width: 40 }} />
       </View>
       <ScrollView contentContainerStyle={{ paddingVertical: 20 }}>
+        <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+          <View style={{ backgroundColor: theme.colors.surfaceElevated, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border }}>
+            <Text style={{ color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600", marginBottom: 4 }}>Out of Credits</Text>
+            <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>Purchase credits to start using AI features.</Text>
+          </View>
+        </View>
         <ListSection items={AI_SETTINGS} theme={theme} router={router} />
       </ScrollView>
     </SafeAreaView>

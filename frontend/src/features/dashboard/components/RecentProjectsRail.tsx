@@ -15,7 +15,16 @@ export type ProjectRailItem = {
   gradient: [string, string];
 };
 
-type Props = { items: ProjectRailItem[]; emptyLabel?: string; onPressItem?: (id: string) => void };
+type Props = { 
+  items: ProjectRailItem[]; 
+  emptyLabel?: string; 
+  emptyIcon?: string;
+  emptyTitle?: string;
+  emptyDesc?: string;
+  emptyCta?: string;
+  onEmptyCtaPress?: () => void;
+  onPressItem?: (id: string) => void;
+};
 
 function ProjectCard({ item, theme, onPressItem }: { item: ProjectRailItem, theme: any, onPressItem?: (id: string) => void }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -86,10 +95,25 @@ function ProjectCard({ item, theme, onPressItem }: { item: ProjectRailItem, them
   );
 }
 
-export function RecentProjectsRail({ items, emptyLabel, onPressItem }: Props) {
+export function RecentProjectsRail({ items, emptyLabel, emptyIcon, emptyTitle, emptyDesc, emptyCta, onEmptyCtaPress, onPressItem }: Props) {
   const { theme } = useTheme();
 
   if (items.length === 0) {
+    if (emptyTitle) {
+      return (
+        <View style={[styles.richEmpty, { borderColor: theme.colors.border, borderRadius: theme.radius.lg, backgroundColor: theme.colors.surface }]}>
+          <Text style={{ fontSize: 32, marginBottom: 12 }}>{emptyIcon}</Text>
+          <Text style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: "700", marginBottom: 6 }}>{emptyTitle}</Text>
+          <Text style={{ color: theme.colors.textMuted, fontSize: 14, textAlign: "center", marginBottom: emptyCta ? 16 : 0 }}>{emptyDesc}</Text>
+          {emptyCta && (
+            <Pressable style={[styles.emptyCta, { backgroundColor: theme.colors.primary }]} onPress={onEmptyCtaPress}>
+              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "700" }}>{emptyCta}</Text>
+            </Pressable>
+          )}
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.empty, { borderColor: theme.colors.border, borderRadius: theme.radius.md }]}>
         <Text style={{ color: theme.colors.textMuted, fontSize: 13 }}>
@@ -185,5 +209,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: "dashed",
     alignItems: "center",
+  },
+  richEmpty: {
+    marginHorizontal: 20,
+    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    marginBottom: 24,
+  },
+  emptyCta: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
   },
 });

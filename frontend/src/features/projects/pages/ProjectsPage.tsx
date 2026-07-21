@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,194 +8,187 @@ import {
   TextInput,
   Dimensions,
   Modal,
+  Animated,
+  Pressable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/src/theme";
+import { useProjectsStore } from "@/src/store/projects.store";
 
 const { width } = Dimensions.get("window");
 
-// --- Mock Data ---
-const MOCK_STATS = [
-  { label: "Total Projects", value: "32", icon: "folder-open-outline", color: "#7C5CFF" },
-  { label: "Drafts", value: "8", icon: "document-text-outline", color: "#FFB43C" },
-  { label: "Recently Edited", value: "12", icon: "time-outline", color: "#3CD09A" },
-  { label: "Cloud Synced", value: "24", icon: "cloud-done-outline", color: "#0A84FF" },
-];
-
 const FILTER_CHIPS = ["All", "Recent", "Drafts", "Completed", "Favorites"];
 
-const MOCK_PROJECTS = [
-  {
-    id: "1",
-    name: "Summer Vlog 05",
-    lastEdited: "2 hours ago",
-    duration: "10:24",
-    resolution: "4K",
-    status: "In Progress",
-    isFavorite: true,
-    thumbnailColors: ["#2C1A5C", "#0A0A0B"],
-  },
-  {
-    id: "2",
-    name: "Cinematic B-Roll",
-    lastEdited: "Yesterday",
-    duration: "02:15",
-    resolution: "4K",
-    status: "Completed",
-    isFavorite: false,
-    thumbnailColors: ["#1A3C40", "#0A0A0B"],
-  },
-  {
-    id: "3",
-    name: "Instagram Reel",
-    lastEdited: "3 days ago",
-    duration: "00:45",
-    resolution: "1080P",
-    status: "Draft",
-    isFavorite: false,
-    thumbnailColors: ["#4A154B", "#0A0A0B"],
-  },
-  {
-    id: "4",
-    name: "Travel Diary",
-    lastEdited: "Last week",
-    duration: "15:30",
-    resolution: "4K",
-    status: "Completed",
-    isFavorite: true,
-    thumbnailColors: ["#1A2A3A", "#0A0A0B"],
-  },
-];
 
-const QUICK_ACTIONS = [
-  { label: "Import Media", icon: "images", color: "#7C5CFF" },
-  { label: "Templates", icon: "color-wand", color: "#FF3B8B" },
-  { label: "Duplicate", icon: "copy", color: "#3CD09A" },
-  { label: "Recover", icon: "refresh", color: "#FFB43C" },
-];
-
-const RECENT_ACTIVITY = [
-  { label: "Edited 'Summer Vlog 05'", time: "10 mins ago", icon: "create" },
-  { label: "Exported 'Cinematic B-Roll'", time: "Yesterday", icon: "videocam" },
-  { label: "Created new project", time: "3 days ago", icon: "add-circle" },
-  { label: "Imported 12 media files", time: "Last week", icon: "images" },
-];
+function AnimatedPressable({ children, onPress, style }: { children: React.ReactNode, onPress: () => void, style?: any }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+    >
+      <Animated.View style={[style, { transform: [{ scale }] }]}>
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 export function ProjectsPage() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const projects = useProjectsStore((s) => s.projects);
   const [activeFilter, setActiveFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [bottomSheetVisible, setBottomSheetVisible] = useState(false);
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [menuSheetVisible, setMenuSheetVisible] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any>(null);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Completed": return theme.colors.success;
-      case "In Progress": return theme.colors.primary;
-      case "Draft": return theme.colors.warning;
-      default: return theme.colors.textMuted;
+  // Global Fade In
+  const pageOpacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(pageOpacity, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, [pageOpacity]);
+
+  // FAB Hide on scroll logic
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+  const fabTranslateY = useRef(new Animated.Value(0)).current;
+
+  const handleScroll = Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    {
+      useNativeDriver: true,
+      listener: (event: any) => {
+        const currentY = event.nativeEvent.contentOffset.y;
+        if (currentY > lastScrollY.current && currentY > 50) {
+          // Scrolling down
+          Animated.spring(fabTranslateY, { toValue: 150, useNativeDriver: true, speed: 20 }).start();
+        } else if (currentY < lastScrollY.current || currentY < 50) {
+          // Scrolling up
+          Animated.spring(fabTranslateY, { toValue: 0, useNativeDriver: true, speed: 20 }).start();
+        }
+        lastScrollY.current = currentY;
+      },
     }
-  };
+  );
+
+  const draftsCount = projects.filter((p: any) => p.status === "Draft").length;
+  const completedCount = projects.filter((p: any) => p.status === "Completed").length;
 
   const handleMorePress = (project: any) => {
     setSelectedProject(project);
-    setBottomSheetVisible(true);
+    setMenuSheetVisible(true);
   };
 
   const renderProjectCard = (item: any) => {
-    const statusColor = getStatusColor(item.status);
     return (
-      <View key={item.id} style={[styles.projectCard, { backgroundColor: theme.colors.surface }]}>
+      <AnimatedPressable key={item.id} onPress={() => {}} style={[styles.projectCard, { backgroundColor: "#fff" }]}>
         <View style={styles.thumbnailWrapper}>
-          <LinearGradient colors={item.thumbnailColors as any} style={styles.thumbnail} />
-          
+          <LinearGradient colors={item.thumbnailColors || ["#1D2B64", "#3B6CE7"]} style={styles.thumbnail} />
           <View style={styles.thumbnailBadges}>
-            <View style={[styles.resolutionBadge, { backgroundColor: "rgba(0,0,0,0.6)" }]}>
-              <Text style={styles.resolutionText}>{item.resolution}</Text>
-            </View>
-            <View style={[styles.durationBadge, { backgroundColor: "rgba(0,0,0,0.6)" }]}>
-              <Text style={styles.durationText}>{item.duration}</Text>
-            </View>
+            {item.resolution && (
+              <View style={[styles.badge, { backgroundColor: "rgba(0,0,0,0.6)" }]}>
+                <Text style={styles.badgeText}>{item.resolution}</Text>
+              </View>
+            )}
+            {item.duration && (
+              <View style={[styles.badge, { backgroundColor: "rgba(0,0,0,0.6)" }]}>
+                <Text style={styles.badgeText}>{item.duration}</Text>
+              </View>
+            )}
+            {item.aspectRatio && (
+              <View style={[styles.badge, { backgroundColor: "rgba(0,0,0,0.6)" }]}>
+                <Ionicons name={item.aspectRatio === "9:16" ? "phone-portrait-outline" : "tv-outline"} size={10} color="#fff" style={{marginRight: 2}} />
+                <Text style={styles.badgeText}>{item.aspectRatio}</Text>
+              </View>
+            )}
           </View>
-          
-          {item.isFavorite && (
-            <View style={styles.favoriteBadge}>
-              <Ionicons name="heart" size={14} color={theme.colors.danger} />
-            </View>
-          )}
+          <View style={styles.continueOverlay}>
+            <Text style={styles.continueText}>Tap to continue editing</Text>
+          </View>
         </View>
 
         <View style={styles.cardInfo}>
           <View style={styles.cardTitleRow}>
-            <Text style={[styles.projectName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-              {item.name}
+            <Text style={[styles.projectName, { color: "#1D2B64" }]} numberOfLines={1}>
+              {item.name || "Untitled Project"}
             </Text>
-            <TouchableOpacity onPress={() => handleMorePress(item)} style={styles.moreButton}>
-              <Ionicons name="ellipsis-vertical" size={16} color={theme.colors.textMuted} />
+            <TouchableOpacity onPress={() => handleMorePress(item)} style={styles.moreButton} hitSlop={10}>
+              <Ionicons name="ellipsis-vertical" size={16} color="#8E8E93" />
             </TouchableOpacity>
           </View>
-          
-          <Text style={[styles.lastEdited, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-            {item.lastEdited}
+          <Text style={[styles.lastEdited, { color: "#8E8E93" }]} numberOfLines={1}>
+            {item.lastEdited || "Recently edited"}
           </Text>
-          
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + "15" }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.statusText, { color: statusColor }]}>{item.status}</Text>
-          </View>
         </View>
-      </View>
+      </AnimatedPressable>
     );
   };
 
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + 100, paddingTop: insets.top + 20 }}
+    <Animated.View style={[styles.container, { backgroundColor: "#F5F7FA", opacity: pageOpacity }]}>
+      <Animated.ScrollView
+        contentContainerStyle={{ paddingBottom: insets.bottom + 120, paddingTop: insets.top + 20 }}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Projects</Text>
-            <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>Manage all your creative work.</Text>
+            <Text style={styles.title}>Projects</Text>
+            <Text style={styles.subtitle}>Manage your creative work.</Text>
           </View>
           <View style={styles.headerIcons}>
-            <TouchableOpacity style={[styles.iconButton, { backgroundColor: theme.colors.surfaceElevated }]}>
-              <Ionicons name="search" size={20} color={theme.colors.textPrimary} />
+            <TouchableOpacity style={styles.iconButton}>
+              <Ionicons name="search" size={20} color="#1D2B64" />
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.iconButton, { backgroundColor: theme.colors.surfaceElevated }]}>
-              <Ionicons name="options-outline" size={20} color={theme.colors.textPrimary} />
+            <TouchableOpacity style={styles.iconButton} onPress={() => setFilterSheetVisible(true)}>
+              <Ionicons name="options" size={20} color="#1D2B64" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Statistics Cards */}
-        <View style={styles.statsContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}>
-            {MOCK_STATS.map((stat, idx) => (
-              <View key={idx} style={[styles.statCard, { backgroundColor: theme.colors.surface }]}>
-                <View style={[styles.statIconBox, { backgroundColor: stat.color + "15" }]}>
-                  <Ionicons name={stat.icon as any} size={18} color={stat.color} />
-                </View>
-                <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{stat.value}</Text>
-                <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{stat.label}</Text>
-              </View>
-            ))}
-          </ScrollView>
+        {/* Compact Summary Card */}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Projects</Text>
+            <Text style={styles.summaryValue}>{projects.length}</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Drafts</Text>
+            <Text style={styles.summaryValue}>{draftsCount}</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Completed</Text>
+            <Text style={styles.summaryValue}>{completedCount}</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Storage</Text>
+            <Text style={styles.summaryValue}>0 GB</Text>
+          </View>
         </View>
 
         {/* Search */}
         <View style={styles.searchContainer}>
-          <View style={[styles.searchBox, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.border }]}>
-            <Ionicons name="search" size={18} color={theme.colors.textMuted} />
+          <View style={styles.searchBox}>
+            <Ionicons name="search" size={18} color="#8E8E93" />
             <TextInput
-              style={[styles.searchInput, { color: theme.colors.textPrimary }]}
+              style={styles.searchInput}
               placeholder="Search projects..."
-              placeholderTextColor={theme.colors.textMuted}
+              placeholderTextColor="#8E8E93"
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -213,95 +206,103 @@ export function ProjectsPage() {
                   onPress={() => setActiveFilter(chip)}
                   style={[
                     styles.filterChip,
-                    {
-                      backgroundColor: isActive ? theme.colors.primary : theme.colors.surface,
-                      borderColor: isActive ? theme.colors.primary : theme.colors.border,
-                    },
+                    isActive ? styles.filterChipActive : styles.filterChipInactive
                   ]}
                 >
-                  <Text style={[styles.filterText, { color: isActive ? "#fff" : theme.colors.textPrimary }]}>{chip}</Text>
+                  <Text style={[styles.filterText, isActive ? styles.filterTextActive : styles.filterTextInactive]}>{chip}</Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
         </View>
 
-        {/* Projects Grid */}
-        <View style={styles.gridContainer}>
-          {MOCK_PROJECTS.length > 0 ? (
-            MOCK_PROJECTS.map(renderProjectCard)
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="folder-open-outline" size={64} color={theme.colors.textMuted} />
-              <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>No Projects Yet</Text>
-              <TouchableOpacity style={[styles.emptyButton, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.emptyButtonText}>Create Your First Project</Text>
+        {/* Projects Content */}
+        {projects.length > 0 ? (
+          <View style={styles.gridContainer}>
+            {projects.map(renderProjectCard)}
+          </View>
+        ) : (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIllustration}>
+              <Ionicons name="folder-open" size={64} color="#3B6CE7" />
+            </View>
+            <Text style={styles.emptyTitle}>No Projects Yet</Text>
+            <Text style={styles.emptySubtitle}>Create your first project to start editing with AI.</Text>
+            
+            <View style={styles.emptyActions}>
+              <TouchableOpacity style={styles.primaryButton}>
+                <Text style={styles.primaryButtonText}>Create Project</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonText}>Import Media</Text>
               </TouchableOpacity>
             </View>
-          )}
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Quick Actions</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-            {QUICK_ACTIONS.map((action, idx) => (
-              <TouchableOpacity key={idx} style={[styles.quickActionCard, { backgroundColor: theme.colors.surface }]}>
-                <View style={[styles.quickActionIcon, { backgroundColor: action.color + "15" }]}>
-                  <Ionicons name={action.icon as any} size={24} color={action.color} />
-                </View>
-                <Text style={[styles.quickActionText, { color: theme.colors.textPrimary }]}>{action.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Recent Activity */}
-        <View style={[styles.section, { paddingHorizontal: 20 }]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary, marginLeft: 0 }]}>Recent Activity</Text>
-          <View style={[styles.activityCard, { backgroundColor: theme.colors.surface }]}>
-            {RECENT_ACTIVITY.map((activity, idx) => (
-              <View key={idx} style={styles.activityItem}>
-                <View style={[styles.activityIconBox, { backgroundColor: theme.colors.surfaceElevated }]}>
-                  <Ionicons name={activity.icon as any} size={16} color={theme.colors.textMuted} />
-                </View>
-                <View style={styles.activityContent}>
-                  <Text style={[styles.activityLabel, { color: theme.colors.textPrimary }]}>{activity.label}</Text>
-                  <Text style={[styles.activityTime, { color: theme.colors.textSecondary }]}>{activity.time}</Text>
-                </View>
-                {idx < RECENT_ACTIVITY.length - 1 && <View style={[styles.activityLine, { backgroundColor: theme.colors.border }]} />}
-              </View>
-            ))}
           </View>
-        </View>
-
-      </ScrollView>
+        )}
+      </Animated.ScrollView>
 
       {/* Floating Action Button */}
-      <TouchableOpacity style={[styles.fab, { backgroundColor: theme.colors.primary, bottom: insets.bottom + 20 }]} activeOpacity={0.8}>
-        <Ionicons name="add" size={24} color="#fff" />
-        <Text style={styles.fabText}>New Project</Text>
-      </TouchableOpacity>
+      {projects.length > 0 && (
+        <Animated.View style={[styles.fabContainer, { transform: [{ translateY: fabTranslateY }], bottom: insets.bottom + 20 }]}>
+          <TouchableOpacity style={styles.fabGlowWrapper} activeOpacity={0.8}>
+            <LinearGradient colors={["#1D2B64", "#3B6CE7"]} style={styles.fab} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              <Ionicons name="add" size={24} color="#fff" />
+              <Text style={styles.fabText}>New Project</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
 
-      {/* Bottom Sheet Menu */}
-      <Modal visible={bottomSheetVisible} transparent animationType="slide">
+      {/* Filter Bottom Sheet */}
+      <Modal visible={filterSheetVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setBottomSheetVisible(false)} />
-          <View style={[styles.bottomSheet, { backgroundColor: theme.colors.surfaceElevated, paddingBottom: insets.bottom + 20 }]}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setFilterSheetVisible(false)} />
+          <View style={[styles.bottomSheet, { paddingBottom: insets.bottom + 20 }]}>
             <View style={styles.sheetHandle} />
-            <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-              {selectedProject?.name || "Options"}
+            <Text style={styles.sheetTitle}>Filter & Sort</Text>
+            
+            <Text style={styles.sheetSectionTitle}>Sort By</Text>
+            <View style={styles.sheetOptionsRow}>
+              {["Recent", "Name", "Date Created", "Last Edited", "Duration", "Resolution"].map(opt => (
+                <TouchableOpacity key={opt} style={styles.sheetOptionChip}>
+                  <Text style={styles.sheetOptionText}>{opt}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.sheetSectionTitle}>Status</Text>
+            <View style={styles.sheetOptionsRow}>
+              {["Draft", "Completed", "In Progress", "Favorites"].map(opt => (
+                <TouchableOpacity key={opt} style={styles.sheetOptionChip}>
+                  <Text style={styles.sheetOptionText}>{opt}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Project Menu Bottom Sheet */}
+      <Modal visible={menuSheetVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setMenuSheetVisible(false)} />
+          <View style={[styles.bottomSheet, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle} numberOfLines={1}>
+              {selectedProject?.name || "Project Options"}
             </Text>
             {[
+              { icon: "open-outline", label: "Open" },
               { icon: "pencil", label: "Rename" },
-              { icon: "copy", label: "Duplicate" },
-              { icon: "heart", label: "Favorite" },
+              { icon: "copy-outline", label: "Duplicate" },
+              { icon: "folder-open-outline", label: "Move" },
               { icon: "share-outline", label: "Share" },
-              { icon: "trash", label: "Delete", destructive: true },
+              { icon: "cloud-upload-outline", label: "Export" },
+              { icon: "trash-outline", label: "Delete", destructive: true },
             ].map((opt, i) => (
-              <TouchableOpacity key={i} style={styles.sheetItem}>
-                <Ionicons name={opt.icon as any} size={20} color={opt.destructive ? theme.colors.danger : theme.colors.textPrimary} />
-                <Text style={[styles.sheetItemText, { color: opt.destructive ? theme.colors.danger : theme.colors.textPrimary }]}>
+              <TouchableOpacity key={i} style={styles.sheetMenuItem}>
+                <Ionicons name={opt.icon as any} size={22} color={opt.destructive ? "#FF3B3B" : "#1D2B64"} />
+                <Text style={[styles.sheetMenuItemText, { color: opt.destructive ? "#FF3B3B" : "#1D2B64" }]}>
                   {opt.label}
                 </Text>
               </TouchableOpacity>
@@ -309,7 +310,7 @@ export function ProjectsPage() {
           </View>
         </View>
       </Modal>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -322,52 +323,72 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   title: {
     fontSize: 28,
     fontWeight: "800",
+    color: "#1D2B64",
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    fontWeight: "400",
+    fontWeight: "500",
+    color: "#8E8E93",
   },
   headerIcons: {
     flexDirection: "row",
     gap: 12,
   },
   iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#3B6CE7",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  statsContainer: {
-    marginBottom: 20,
-  },
-  statCard: {
-    padding: 16,
-    borderRadius: 20,
-    width: 130,
-  },
-  statIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    justifyContent: "center",
+  summaryCard: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    marginHorizontal: 20,
+    height: 90,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    marginBottom: 24,
+    shadowColor: "#1D2B64",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
-  statValue: {
-    fontSize: 22,
-    fontWeight: "800",
+  summaryItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#8E8E93",
     marginBottom: 4,
   },
-  statLabel: {
-    fontSize: 13,
-    fontWeight: "500",
+  summaryValue: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#1D2B64",
+  },
+  summaryDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: "#E5E5EA",
   },
   searchContainer: {
     paddingHorizontal: 20,
@@ -378,27 +399,46 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     height: 50,
-    borderRadius: 16,
-    borderWidth: 1,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: "#3B6CE7",
   },
   searchInput: {
     flex: 1,
     marginLeft: 12,
     fontSize: 15,
     fontWeight: "500",
+    color: "#1D2B64",
   },
   filtersContainer: {
     marginBottom: 24,
   },
   filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    height: 40,
+    paddingHorizontal: 20,
+    justifyContent: "center",
+    alignItems: "center",
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 1.5,
+  },
+  filterChipActive: {
+    backgroundColor: "#3B6CE7",
+    borderColor: "#3B6CE7",
+  },
+  filterChipInactive: {
+    backgroundColor: "#fff",
+    borderColor: "#3B6CE7",
   },
   filterText: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  filterTextActive: {
+    color: "#fff",
+  },
+  filterTextInactive: {
+    color: "#3B6CE7",
   },
   gridContainer: {
     flexDirection: "row",
@@ -408,13 +448,18 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   projectCard: {
-    width: (width - 56) / 2, // 20 padding each side, 16 gap
-    borderRadius: 20,
+    width: (width - 56) / 2,
+    borderRadius: 24,
     marginBottom: 16,
     overflow: "hidden",
+    shadowColor: "#1D2B64",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   thumbnailWrapper: {
-    height: (width - 56) / 2 * 0.75, // 4:3 aspect ratio roughly
+    height: (width - 56) / 2 * 0.85,
     width: "100%",
   },
   thumbnail: {
@@ -423,40 +468,37 @@ const styles = StyleSheet.create({
   thumbnailBadges: {
     position: "absolute",
     bottom: 8,
+    left: 8,
     right: 8,
     flexDirection: "row",
-    gap: 6,
+    flexWrap: "wrap",
+    gap: 4,
   },
-  resolutionBadge: {
+  badge: {
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 6,
+    flexDirection: "row",
+    alignItems: "center",
   },
-  resolutionText: {
+  badgeText: {
     color: "#fff",
     fontSize: 9,
     fontWeight: "700",
   },
-  durationBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  durationText: {
-    color: "#fff",
-    fontSize: 9,
-    fontWeight: "600",
-  },
-  favoriteBadge: {
+  continueOverlay: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(29, 43, 100, 0.4)",
     justifyContent: "center",
     alignItems: "center",
+    opacity: 0,
+  },
+  continueText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+    opacity: 0.9,
   },
   cardInfo: {
     padding: 12,
@@ -479,166 +521,159 @@ const styles = StyleSheet.create({
   },
   lastEdited: {
     fontSize: 12,
-    marginBottom: 10,
+    fontWeight: "500",
   },
-  statusBadge: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
+  emptyContainer: {
+    paddingHorizontal: 20,
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    marginTop: 20,
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 16,
-    marginLeft: 20,
-  },
-  quickActionCard: {
+  emptyIllustration: {
     width: 120,
     height: 120,
-    borderRadius: 20,
-    padding: 16,
-    justifyContent: "space-between",
-    marginLeft: 20,
-  },
-  quickActionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    borderRadius: 60,
+    backgroundColor: "rgba(59, 108, 231, 0.1)",
     justifyContent: "center",
     alignItems: "center",
-  },
-  quickActionText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  activityCard: {
-    borderRadius: 24,
-    padding: 20,
-  },
-  activityItem: {
-    flexDirection: "row",
-    marginBottom: 20,
-    position: "relative",
-  },
-  activityLine: {
-    position: "absolute",
-    left: 15,
-    top: 32,
-    bottom: -20,
-    width: 2,
-  },
-  activityIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
-    zIndex: 1,
-  },
-  activityContent: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  activityLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    marginBottom: 2,
-  },
-  activityTime: {
-    fontSize: 12,
-  },
-  emptyState: {
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 40,
+    marginBottom: 24,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 16,
-    marginBottom: 20,
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1D2B64",
+    marginBottom: 8,
   },
-  emptyButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 20,
-  },
-  emptyButtonText: {
-    color: "#fff",
+  emptySubtitle: {
     fontSize: 15,
-    fontWeight: "600",
-  },
-  fab: {
-    position: "absolute",
-    right: 20,
-    flexDirection: "row",
-    alignItems: "center",
+    color: "#8E8E93",
+    textAlign: "center",
+    marginBottom: 32,
     paddingHorizontal: 20,
+  },
+  emptyActions: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  primaryButton: {
+    backgroundColor: "#3B6CE7",
+    paddingHorizontal: 24,
     paddingVertical: 14,
-    borderRadius: 28,
-    elevation: 5,
-    shadowColor: "#000",
+    borderRadius: 16,
+    shadowColor: "#3B6CE7",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  secondaryButton: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#E5E5EA",
+  },
+  secondaryButtonText: {
+    color: "#1D2B64",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  fabContainer: {
+    position: "absolute",
+    right: 20,
+    zIndex: 100,
+  },
+  fabGlowWrapper: {
+    shadowColor: "#3B6CE7",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  fab: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 999,
   },
   fabText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
     marginLeft: 8,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
   bottomSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 20,
   },
   sheetHandle: {
     width: 40,
-    height: 4,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 2,
+    height: 5,
+    backgroundColor: "#E5E5EA",
+    borderRadius: 3,
     alignSelf: "center",
-    marginBottom: 20,
+    marginBottom: 24,
   },
   sheetTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 16,
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1D2B64",
+    marginBottom: 20,
   },
-  sheetItem: {
+  sheetSectionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#8E8E93",
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  sheetOptionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 20,
+  },
+  sheetOptionChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: "#F5F7FA",
+    borderWidth: 1,
+    borderColor: "#E5E5EA",
+  },
+  sheetOptionText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1D2B64",
+  },
+  sheetMenuItem: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F5F7FA",
   },
-  sheetItemText: {
-    fontSize: 16,
-    fontWeight: "500",
-    marginLeft: 12,
+  sheetMenuItemText: {
+    fontSize: 17,
+    fontWeight: "600",
+    marginLeft: 16,
   },
 });
