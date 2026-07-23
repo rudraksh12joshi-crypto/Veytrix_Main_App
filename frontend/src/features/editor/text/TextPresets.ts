@@ -1,0 +1,123 @@
+import { TextLayer } from "../types/editor.types";
+
+export interface TextPreset {
+  id: string;
+  name: string;
+  icon: string;
+  style: Partial<TextLayer>;
+}
+
+export const TEXT_PRESETS: TextPreset[] = [
+  {
+    id: "heading",
+    name: "Heading",
+    icon: "text-outline",
+    style: {
+      text: "HEADING TITLE",
+      fontWeight: "900",
+      fontSize: 32,
+      color: "#FFFFFF",
+      opacity: 1,
+      outlineColor: "#000000",
+      outlineWidth: 3,
+      shadowColor: "rgba(0,0,0,0.8)",
+      shadowBlur: 8,
+      letterSpacing: 1,
+      alignment: "center",
+    },
+  },
+  {
+    id: "subtitle",
+    name: "Subtitle",
+    icon: "subtitles-outline",
+    style: {
+      text: "Veytrix Subtitle Text",
+      fontWeight: "700",
+      fontSize: 22,
+      color: "#FFCC00",
+      opacity: 1,
+      outlineColor: "#000000",
+      outlineWidth: 2,
+      shadowColor: "rgba(0,0,0,0.6)",
+      shadowBlur: 4,
+      letterSpacing: 0,
+      alignment: "center",
+    },
+  },
+  {
+    id: "caption",
+    name: "Caption",
+    icon: "chatbox-ellipses-outline",
+    style: {
+      text: "Clean Caption Box",
+      fontWeight: "600",
+      fontSize: 18,
+      color: "#FFFFFF",
+      opacity: 0.95,
+      outlineColor: "#121212",
+      outlineWidth: 2,
+      glowColor: "rgba(0,0,0,0.6)",
+      letterSpacing: 0.5,
+      alignment: "center",
+    },
+  },
+  {
+    id: "lower_third",
+    name: "Lower Third",
+    icon: "card-outline",
+    style: {
+      text: "JOHN DOE • CREATIVE DIRECTOR",
+      fontWeight: "700",
+      fontSize: 16,
+      color: "#00E5FF",
+      opacity: 1,
+      outlineColor: "#000000",
+      outlineWidth: 2,
+      shadowColor: "#00E5FF",
+      shadowBlur: 10,
+      letterSpacing: 2,
+      alignment: "left",
+      position: { x: 25, y: 78 },
+    },
+  },
+  {
+    id: "credits",
+    name: "Credits",
+    icon: "film-outline",
+    style: {
+      text: "DIRECTED BY VEYTRIX STUDIOS",
+      fontWeight: "400",
+      fontSize: 15,
+      color: "#CCCCCC",
+      opacity: 0.85,
+      outlineColor: "transparent",
+      outlineWidth: 0,
+      shadowColor: "rgba(0,0,0,0.5)",
+      shadowBlur: 4,
+      letterSpacing: 3,
+      alignment: "center",
+      position: { x: 50, y: 85 },
+    },
+  },
+  {
+    id: "animated_title",
+    name: "Animated Title",
+    icon: "sparkles-outline",
+    style: {
+      text: "DYNAMIC TITLE",
+      fontWeight: "900",
+      fontSize: 36,
+      color: "#FF007A",
+      opacity: 1,
+      outlineColor: "#00E5FF",
+      outlineWidth: 3,
+      glowColor: "#FF007A",
+      shadowColor: "#FF007A",
+      shadowBlur: 12,
+      letterSpacing: 2,
+      alignment: "center",
+      animation: "bounce",
+      animationDuration: 800,
+    },
+  },
+];

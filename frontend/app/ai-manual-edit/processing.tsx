@@ -69,7 +69,7 @@ export default function AIProcessingPage() {
     // Navigate to editor after 5.5 seconds
     const timeout = setTimeout(() => {
       router.replace({
-        pathname: "/editor/new",
+        pathname: "/editor/new" as any,
         params: { videoUri, duration }
       });
     }, 5500);
