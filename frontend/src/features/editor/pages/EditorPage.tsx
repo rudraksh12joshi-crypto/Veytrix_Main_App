@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Image, Animated, PanResponder } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Image, Animated, PanResponder, Platform, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -45,6 +45,89 @@ const EDITING_TOOLS = [
   { id: "ai", icon: "planet-outline", label: "AI Tools" },
 ];
 
+// --- Premium Animated Tool Button ---
+const ToolButton = React.memo(function ToolButton({
+  tool,
+  isActive,
+  isDisabled,
+  onPress,
+  primaryColor,
+}: {
+  tool: { id: string; icon: string; label: string };
+  isActive: boolean;
+  isDisabled: boolean;
+  onPress: () => void;
+  primaryColor: string;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: isActive ? 1.05 : 1,
+      useNativeDriver: true,
+      speed: 30,
+      bounciness: 6,
+    }).start();
+  };
+
+  useEffect(() => {
+    Animated.spring(scaleAnim, {
+      toValue: isActive ? 1.05 : 1,
+      useNativeDriver: true,
+      speed: 30,
+      bounciness: 6,
+    }).start();
+  }, [isActive]);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      disabled={isDisabled}
+      style={{ opacity: isDisabled ? 0.35 : 1 }}
+    >
+      <Animated.View style={[styles.toolBtn, { transform: [{ scale: scaleAnim }] }]}>
+        <View style={[styles.toolIconBox, isActive && styles.toolIconBoxActive]}>
+          {isActive && (
+            <LinearGradient
+              colors={["#2563EB", "#3B82F6", "#60A5FA"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          )}
+          <Ionicons
+            name={tool.icon as any}
+            size={26}
+            color={isActive ? "#fff" : isDisabled ? "#555" : "rgba(200,200,210,0.8)"}
+          />
+        </View>
+        <Text
+          style={[
+            styles.toolLabel,
+            { color: isActive ? "#fff" : isDisabled ? "#555" : "rgba(160,160,175,0.9)" },
+          ]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {tool.label}
+        </Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+});
+
 export function EditorPage() {
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -73,6 +156,39 @@ export function EditorPage() {
   // Overlay Layers State
   const [overlayLayers, setOverlayLayers] = useState<OverlayLayer[]>([]);
   const [selectedOverlayLayerId, setSelectedOverlayLayerId] = useState<string | null>(null);
+
+  // AI Assist floating button
+  const aiScaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handleAiPressIn = () => {
+    Animated.spring(aiScaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+  };
+
+  const handleAiPressOut = () => {
+    Animated.spring(aiScaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 30,
+      bounciness: 6,
+    }).start();
+  };
+
+  // Compute timeline width from total project duration for helper tracks
+  const projectTimelineWidth = useMemo(() => {
+    if (videoClips.length > 0) {
+      const maxEnd = videoClips.reduce((max, clip) => {
+        const clipEnd = (clip.endTime / (clip.speed || 1.0));
+        return Math.max(max, clipEnd);
+      }, 0);
+      return Math.max(maxEnd * PIXELS_PER_MS, 200);
+    }
+    return totalDuration * PIXELS_PER_MS || 300;
+  }, [videoClips, totalDuration]);
 
   const handleAddOverlayLayer = (type: OverlayType) => {
     const newId = `overlay-${Date.now()}`;
@@ -886,7 +1002,7 @@ export function EditorPage() {
                       </TouchableOpacity>
                     ) : (
                       <TouchableOpacity activeOpacity={0.8} onPress={() => !isTrimMode && setMusicSheetVisible(true)}>
-                        <View style={[styles.vnClip, { width: totalDuration * PIXELS_PER_MS || 200, backgroundColor: "#2A2A35" }]}>
+                        <View style={[styles.vnClip, { width: projectTimelineWidth, backgroundColor: "#2A2A35" }]}>
                           <Text style={styles.vnPlaceholderText}>Tap to add music</Text>
                         </View>
                       </TouchableOpacity>
@@ -935,7 +1051,7 @@ export function EditorPage() {
                       </View>
                     ) : (
                       <TouchableOpacity activeOpacity={0.8} onPress={handleAddTextLayer}>
-                        <View style={[styles.vnClip, { width: totalDuration * PIXELS_PER_MS || 250, backgroundColor: "#2A2A35" }]}>
+                        <View style={[styles.vnClip, { width: projectTimelineWidth, backgroundColor: "#2A2A35" }]}>
                           <Text style={styles.vnPlaceholderText}>Tap to add text</Text>
                         </View>
                       </TouchableOpacity>
@@ -984,7 +1100,7 @@ export function EditorPage() {
                       </View>
                     ) : (
                       <TouchableOpacity activeOpacity={0.8} onPress={() => handleAddOverlayLayer("image")}>
-                        <View style={[styles.vnClip, { width: totalDuration * PIXELS_PER_MS || 300, backgroundColor: "#2A2A35" }]}>
+                        <View style={[styles.vnClip, { width: projectTimelineWidth, backgroundColor: "#2A2A35" }]}>
                           <Text style={styles.vnPlaceholderText}>Tap to add sticker / Overlay</Text>
                         </View>
                       </TouchableOpacity>
@@ -1102,7 +1218,7 @@ export function EditorPage() {
                     ))}
                   </View>
                 </>
-              ), [videoUri, musicTrack, totalDuration, selectedTimelineClip, isTrimMode, trimStart, trimEnd, draftTrimStart, draftTrimEnd, isSnappingLeft, isSnappingRight, videoClips, selectedClipId])}
+              ), [videoUri, musicTrack, totalDuration, selectedTimelineClip, isTrimMode, trimStart, trimEnd, draftTrimStart, draftTrimEnd, isSnappingLeft, isSnappingRight, videoClips, selectedClipId, projectTimelineWidth, textLayers, overlayLayers, selectedTextLayerId, selectedOverlayLayerId])}
             </View>
           </ScrollView>
 
@@ -1113,14 +1229,6 @@ export function EditorPage() {
             </View>
           </View>
         </View>
-
-        {!isTrimMode && (
-          <TouchableOpacity style={styles.floatingAiBtn}>
-            <LinearGradient colors={["#1D2B64", "#3B6CE7"]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-            <Ionicons name="sparkles" size={16} color="#fff" />
-            <Text style={styles.floatingAiText}>AI Assist</Text>
-          </TouchableOpacity>
-        )}
       </View>
     );
   };
@@ -1139,10 +1247,25 @@ export function EditorPage() {
     }
 
     const hasVideoClip = Boolean(videoUri) || videoClips.length > 0 || totalDuration > 0;
+    const isPanelOpen = Boolean(selectedTool) || Boolean(selectedTimelineClip);
 
     return (
-      <View style={[styles.editingToolbar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarScroll}>
+      <View style={[
+        styles.editingToolbar,
+        { paddingBottom: Math.max(insets.bottom, 8) },
+        isPanelOpen && { display: 'none' as const },
+      ]}>
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.toolbarScroll}
+          decelerationRate={Platform.OS === "ios" ? "normal" : 0.985}
+          overScrollMode="never"
+          bounces={Platform.OS === "ios"}
+          scrollEventThrottle={16}
+          removeClippedSubviews={Platform.OS === "android"}
+        >
           {EDITING_TOOLS.map((tool) => {
             let isDisabled = false;
             if (tool.id === "trim") isDisabled = !hasVideoClip;
@@ -1151,24 +1274,14 @@ export function EditorPage() {
             const isActive = selectedTool === tool.id;
 
             return (
-              <TouchableOpacity 
-                key={tool.id} 
-                style={[styles.toolBtn, isDisabled && { opacity: 0.4 }]} 
+              <ToolButton
+                key={tool.id}
+                tool={tool}
+                isActive={isActive}
+                isDisabled={isDisabled}
                 onPress={() => handleSelectTool(tool.id)}
-                activeOpacity={isDisabled ? 1 : 0.7}
-                disabled={isDisabled}
-              >
-                <View style={[styles.toolIconBox, isActive && { backgroundColor: "rgba(59,108,231,0.15)" }]}>
-                  <Ionicons 
-                    name={tool.icon as any} 
-                    size={22} 
-                    color={isActive ? theme.colors.primary : isDisabled ? "#666" : "#fff"} 
-                  />
-                </View>
-                <Text style={[styles.toolLabel, { color: isActive ? theme.colors.primary : isDisabled ? "#666" : "#A0A0A0" }]}>
-                  {tool.label}
-                </Text>
-              </TouchableOpacity>
+                primaryColor={theme.colors.primary}
+              />
             );
           })}
         </ScrollView>
@@ -1345,8 +1458,29 @@ export function EditorPage() {
     <SafeAreaView style={[styles.container, { backgroundColor: "#121212" }]} edges={['top']}>
       {renderTopToolbar()}
       {renderVideoPreview()}
-      {renderTimeline()}
-      {selectedTool || selectedTimelineClip ? renderPropertiesPanel() : renderEditingToolbar()}
+      <View style={{ flex: 1, position: 'relative' }}>
+        {renderTimeline()}
+        {!isTrimMode && (
+          <TouchableOpacity
+            activeOpacity={1}
+            onPressIn={handleAiPressIn}
+            onPressOut={handleAiPressOut}
+            style={styles.floatingAiBtnWrap}
+          >
+            <Animated.View style={[styles.floatingAiBtn, { transform: [{ scale: aiScaleAnim }] }]}>
+              <LinearGradient
+                colors={["#3B82F6", "#6D28D9"]}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+              <Ionicons name="sparkles" size={20} color="#fff" />
+            </Animated.View>
+          </TouchableOpacity>
+        )}
+      </View>
+      {(selectedTool || selectedTimelineClip) && renderPropertiesPanel()}
+      {renderEditingToolbar()}
       
       <MusicLibrarySheet 
         visible={musicSheetVisible} 
@@ -1722,55 +1856,73 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
     borderRadius: 1,
   },
-  floatingAiBtn: {
+  floatingAiBtnWrap: {
     position: "absolute",
-    top: 16,
+    bottom: 16,
     right: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 6,
-    overflow: "hidden",
-    shadowColor: "#3B6CE7",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
-    zIndex: 30,
+    zIndex: 25,
+    elevation: 12,
   },
-  floatingAiText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 13,
+  floatingAiBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
   },
   editingToolbar: {
-    backgroundColor: "#121212",
+    backgroundColor: "rgba(18,18,24,0.92)",
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.05)",
+    borderTopColor: "rgba(255,255,255,0.06)",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 16,
   },
   toolbarScroll: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 16,
+    paddingHorizontal: 10,
+    paddingTop: 6,
+    paddingBottom: 6,
+    gap: 12,
+    alignItems: "center",
   },
   toolBtn: {
     alignItems: "center",
-    width: 64,
+    width: 56,
+    minHeight: 44,
   },
   toolIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     marginBottom: 6,
+    overflow: "hidden",
+  },
+  toolIconBoxActive: {
+    shadowColor: "#3B6CE7",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
   },
   toolLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "500",
+    fontFamily: Platform.OS === "ios" ? "Inter" : "Inter",
+    textAlign: "center",
   },
   trimModeToolbar: {
     flexDirection: "row",
