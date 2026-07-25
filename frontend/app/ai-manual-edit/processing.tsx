@@ -33,7 +33,7 @@ const LOADING_STEPS = [
 
 export default function AIProcessingPage() {
   const router = useRouter();
-  const { videoUri, duration } = useLocalSearchParams<{videoUri?: string, duration?: string}>();
+  const { videosData, videoUri, duration } = useLocalSearchParams<{videosData?: string, videoUri?: string, duration?: string}>();
   
   const [subtitleIndex, setSubtitleIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number>(0);
@@ -156,7 +156,7 @@ export default function AIProcessingPage() {
         setTimeout(() => {
           router.replace({
             pathname: "/editor/new" as any,
-            params: { videoUri, duration }
+            params: { videosData, videoUri, duration }
           });
         }, 50); // slight delay to ensure unmount happens smoothly
       });

@@ -1,11 +1,12 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Image, Animated, PanResponder, Platform, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Video, ResizeMode, Audio } from "expo-av";
+import { Video, ResizeMode, Audio, AVPlaybackStatus } from "expo-av";
+import * as ImagePicker from 'expo-image-picker';
 
 import { useTheme } from "@/src/theme";
 import { MusicLibrarySheet, MusicTrack } from "../components/MusicLibrarySheet";
@@ -132,7 +133,7 @@ export function EditorPage() {
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { videoUri, duration } = useLocalSearchParams<{ videoUri?: string; duration?: string }>();
+  const { videosData, videoUri, duration } = useLocalSearchParams<{ videosData?: string; videoUri?: string; duration?: string }>();
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
 
   const PIXELS_PER_MS = 0.05;
@@ -142,6 +143,8 @@ export function EditorPage() {
   const scrollViewRef = useRef<ScrollView>(null);
   const lastStateUpdate = useRef(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+  const [scrubberWidth, setScrubberWidth] = useState(0);
   const [previewMuted, setPreviewMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(duration ? parseInt(duration) : 0);
@@ -278,6 +281,80 @@ export function EditorPage() {
     );
   };
 
+  const isImageUri = (uri?: string, mediaType?: string) => {
+    if (mediaType === "image") return true;
+    if (mediaType === "video") return false;
+    if (!uri) return false;
+    const lower = uri.toLowerCase();
+    return (
+      lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".heic") ||
+      lower.endsWith(".webp") ||
+      lower.endsWith(".gif") ||
+      lower.startsWith("data:image")
+    );
+  };
+
+  const handleAddMediaPress = async () => {
+    try {
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: false,
+        allowsMultipleSelection: true,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setVideoClips((prev) => {
+          const newClips = [...prev];
+          let currentTotal = prev.length > 0 ? prev[prev.length - 1].endTime : 0;
+          let newlySelectedId = "";
+
+          result.assets.forEach((asset, idx) => {
+            const isImg = asset.type === 'image' || isImageUri(asset.uri, asset.type ?? undefined);
+            const dur = isImg ? 5000 : (asset.duration || 5000);
+            const clipDur = parseInt(dur.toString());
+            const startTime = currentTotal;
+            const endTime = currentTotal + clipDur;
+            currentTotal = endTime;
+            
+            const newId = `clip-${Date.now()}-${idx}`;
+            if (idx === 0) newlySelectedId = newId;
+
+            newClips.push({
+              id: newId,
+              videoUri: asset.uri,
+              thumbnailUri: asset.uri,
+              originalDuration: clipDur,
+              trimStartOffset: 0,
+              trimEndOffset: clipDur,
+              startTime,
+              endTime,
+              speed: 1.0,
+              reverse: false,
+              maintainPitch: true,
+              motionBlur: false,
+              frameBlending: false,
+              adjustments: { ...DEFAULT_COLOR_ADJUSTMENTS },
+              audio: { ...DEFAULT_AUDIO_SETTINGS },
+              mediaType: isImg ? 'image' : 'video',
+            });
+          });
+          
+          setTotalDuration(currentTotal);
+          if (newlySelectedId) {
+            setSelectedClipId(newlySelectedId);
+          }
+          return newClips;
+        });
+      }
+    } catch (e) {
+      console.log("Error launching image picker:", e);
+    }
+  };
+
   const handleDeleteTextLayer = (id: string) => {
     setTextLayers((prev) => prev.filter((l) => l.id !== id));
     if (selectedTextLayerId === id) {
@@ -303,6 +380,18 @@ export function EditorPage() {
   const selectedClip = useMemo(() => {
     return videoClips.find((c) => c.id === selectedClipId) || videoClips[0] || null;
   }, [videoClips, selectedClipId]);
+
+  const activePlaybackClip = useMemo(() => {
+    let accumulated = 0;
+    for (const clip of videoClips) {
+      const clipDuration = clip.endTime - clip.startTime;
+      if (currentTime >= accumulated && currentTime < accumulated + clipDuration) {
+        return { clip, localStartMs: clip.startTime, accumulated };
+      }
+      accumulated += clipDuration;
+    }
+    return { clip: videoClips[0] || null, localStartMs: 0, accumulated: 0 };
+  }, [currentTime, videoClips]);
 
   const activeSpeed = selectedClip?.speed || 1.0;
 
@@ -400,6 +489,114 @@ export function EditorPage() {
 
   const audioRef = useRef<Audio.Sound | null>(null);
 
+  const playbackStateRef = useRef({
+    isPlaying,
+    activePlaybackClip,
+    isTrimMode,
+    selectedClipId,
+    draftTrimStart,
+    draftTrimEnd,
+    totalDuration,
+    videoClips,
+    PIXELS_PER_MS,
+  });
+
+  useEffect(() => {
+    playbackStateRef.current = {
+      isPlaying,
+      activePlaybackClip,
+      isTrimMode,
+      selectedClipId,
+      draftTrimStart,
+      draftTrimEnd,
+      totalDuration,
+      videoClips,
+      PIXELS_PER_MS,
+    };
+  });
+
+  const handlePlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
+    if (!status.isLoaded) return;
+
+    const {
+      isPlaying: currentlyPlaying,
+      activePlaybackClip: activeClipInfo,
+      isTrimMode: inTrim,
+      selectedClipId: selId,
+      draftTrimStart: dStart,
+      draftTrimEnd: dEnd,
+      totalDuration: totDur,
+      videoClips: clips,
+      PIXELS_PER_MS: pxPerMs,
+    } = playbackStateRef.current;
+
+    const clip = activeClipInfo.clip;
+    if (!clip) return;
+
+    const isTrimmingActiveClip = inTrim && selId === clip.id;
+    let localVideoStart = clip.trimStartOffset || 0;
+    let localVideoEnd = clip.trimEndOffset || clip.originalDuration || 5000;
+    
+    if (isTrimmingActiveClip) {
+      const deltaStart = dStart - clip.startTime;
+      const deltaEnd = clip.endTime - dEnd;
+      localVideoStart = (clip.trimStartOffset || 0) + deltaStart;
+      localVideoEnd = (clip.trimEndOffset || clip.originalDuration || 5000) - deltaEnd;
+    }
+
+    const isAtClipEnd = (status.positionMillis >= localVideoEnd - 60 && status.positionMillis > 0) || 
+                        (status.didJustFinish && status.positionMillis >= localVideoEnd - 300);
+
+    if (isAtClipEnd && currentlyPlaying) {
+      const isLastClip = activeClipInfo.accumulated + (clip.endTime - clip.startTime) >= totDur - 100;
+      if (isLastClip) {
+        // End of final clip: return to the first clip (0ms) and continue playing
+        setCurrentTime(0);
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: 0, animated: false });
+        }
+        videoRef.current?.setPositionAsync(clips[0]?.trimStartOffset || 0);
+        videoRef.current?.playAsync();
+      } else {
+        // Advance into next clip seamlessly
+        const nextTime = activeClipInfo.accumulated + (clip.endTime - clip.startTime) + 1;
+        setCurrentTime(nextTime);
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: nextTime * pxPerMs, animated: false });
+        }
+      }
+      return;
+    }
+
+    if (currentlyPlaying && !status.isPlaying && !status.isBuffering && !status.didJustFinish) {
+      videoRef.current?.playAsync();
+    }
+
+    if (status.positionMillis < localVideoStart - 200 && currentlyPlaying) {
+      videoRef.current?.setPositionAsync(localVideoStart);
+      setCurrentTime(activeClipInfo.accumulated);
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ x: activeClipInfo.accumulated * pxPerMs, animated: false });
+      }
+      return;
+    }
+
+    if (currentlyPlaying || status.isPlaying) {
+      const timeIntoClip = status.positionMillis - localVideoStart;
+      const newGlobalTime = Math.max(0, activeClipInfo.accumulated + timeIntoClip);
+      setCurrentTime(newGlobalTime);
+      
+      if (scrollViewRef.current) {
+        const scrollX = newGlobalTime * pxPerMs;
+        scrollViewRef.current.scrollTo({ x: scrollX, animated: false });
+      }
+    }
+
+    if (status.durationMillis && totDur === 0 && clips.length === 1) {
+      setTotalDuration(status.durationMillis);
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -409,28 +606,83 @@ export function EditorPage() {
   }, []);
 
   useEffect(() => {
-    const dur = totalDuration > 0 ? totalDuration : (duration ? parseInt(duration) : 30000);
     if (videoClips.length === 0) {
-      const initialClip: VideoClip = {
-        id: "clip-1",
-        startTime: 0,
-        endTime: dur,
-        speed: 1.0,
-        reverse: false,
-        maintainPitch: true,
-        motionBlur: false,
-        frameBlending: false,
-        adjustments: { ...DEFAULT_COLOR_ADJUSTMENTS },
-        audio: { ...DEFAULT_AUDIO_SETTINGS },
-      };
-      setVideoClips([initialClip]);
-      setSelectedClipId("clip-1");
+      let initialClips: VideoClip[] = [];
+      let totalDur = 0;
+
+      if (videosData) {
+        try {
+          const parsedVideos = JSON.parse(videosData);
+          if (Array.isArray(parsedVideos) && parsedVideos.length > 0) {
+            initialClips = parsedVideos.map((v: any, index: number) => {
+              const dur = v.duration || 5000; // default 5s if unknown
+              const clipDur = parseInt(dur.toString());
+              const startTime = totalDur;
+              const endTime = totalDur + clipDur;
+              totalDur += clipDur;
+              return {
+                id: `clip-${index + 1}`,
+                videoUri: v.uri,
+                originalDuration: clipDur,
+                trimStartOffset: 0,
+                trimEndOffset: clipDur,
+                startTime: startTime,
+                endTime: endTime,
+                speed: 1.0,
+                reverse: false,
+                maintainPitch: true,
+                motionBlur: false,
+                frameBlending: false,
+                adjustments: { ...DEFAULT_COLOR_ADJUSTMENTS },
+                audio: { ...DEFAULT_AUDIO_SETTINGS },
+              };
+            });
+          }
+        } catch (e) {
+          console.error("Failed to parse videosData", e);
+        }
+      }
+
+      if (initialClips.length === 0) {
+        const dur = totalDuration > 0 ? totalDuration : (duration ? parseInt(duration) : 30000);
+        totalDur = dur;
+        initialClips = [{
+          id: "clip-1",
+          videoUri,
+          originalDuration: dur,
+          trimStartOffset: 0,
+          trimEndOffset: dur,
+          startTime: 0,
+          endTime: dur,
+          speed: 1.0,
+          reverse: false,
+          maintainPitch: true,
+          motionBlur: false,
+          frameBlending: false,
+          adjustments: { ...DEFAULT_COLOR_ADJUSTMENTS },
+          audio: { ...DEFAULT_AUDIO_SETTINGS },
+        }];
+      }
+
+      setVideoClips(initialClips);
+      setSelectedClipId(initialClips[0].id);
+      setTotalDuration(totalDur);
+
       if (trimEnd === 0) {
-        setTrimEnd(dur);
-        setDraftTrimEnd(dur);
+        setTrimEnd(initialClips[0].endTime);
+        setDraftTrimEnd(initialClips[0].endTime);
       }
     }
-  }, [totalDuration, duration, videoClips.length, trimEnd]);
+  }, [videosData, totalDuration, duration, videoUri, videoClips.length, trimEnd]);
+
+  useEffect(() => {
+    if (videoClips.length > 0) {
+      const newTotalDuration = videoClips[videoClips.length - 1].endTime;
+      if (newTotalDuration !== totalDuration) {
+        setTotalDuration(newTotalDuration);
+      }
+    }
+  }, [videoClips]);
 
   const handleSplitClip = () => {
     const defaultClip: VideoClip = {
@@ -492,6 +744,14 @@ export function EditorPage() {
   const handleSelectTool = (toolId: string) => {
     if (toolId === "split") {
       handleSplitClip();
+    } else if (toolId === "stickers") {
+      handleAddOverlayLayer("sticker");
+      setSelectedTool("overlay");
+    } else if (toolId === "overlay") {
+      if (overlayLayers.length === 0) {
+        handleAddOverlayLayer("image");
+      }
+      setSelectedTool("overlay");
     } else if (toolId === "trim") {
       const activeClip = videoClips.find((c) => c.id === selectedClipId) || videoClips[0];
       const start = activeClip ? activeClip.startTime : trimStart;
@@ -512,13 +772,31 @@ export function EditorPage() {
 
   const handleDoneTrim = () => {
     if (selectedClipId && videoClips.length > 0) {
-      setVideoClips((prev) =>
-        prev.map((clip) =>
-          clip.id === selectedClipId
-            ? { ...clip, startTime: draftTrimStart, endTime: draftTrimEnd }
-            : clip
-        )
-      );
+      setVideoClips((prev) => {
+        let currentTotal = 0;
+        return prev.map((clip) => {
+          let newTrimStartOffset = clip.trimStartOffset || 0;
+          let newTrimEndOffset = clip.trimEndOffset || clip.originalDuration || 5000;
+          
+          if (clip.id === selectedClipId) {
+            const deltaStart = draftTrimStart - clip.startTime;
+            const deltaEnd = clip.endTime - draftTrimEnd;
+            newTrimStartOffset += deltaStart;
+            newTrimEndOffset -= deltaEnd;
+          }
+          
+          const dur = newTrimEndOffset - newTrimStartOffset;
+          const updatedClip = {
+            ...clip,
+            trimStartOffset: newTrimStartOffset,
+            trimEndOffset: newTrimEndOffset,
+            startTime: currentTotal,
+            endTime: currentTotal + dur,
+          };
+          currentTotal += dur;
+          return updatedClip;
+        });
+      });
     }
     setTrimStart(draftTrimStart);
     setTrimEnd(draftTrimEnd);
@@ -644,12 +922,38 @@ export function EditorPage() {
   useEffect(() => {
     if (audioRef.current) {
       if (isPlaying) {
-        audioRef.current.playAsync();
+        audioRef.current.playAsync().catch(() => {});
       } else {
-        audioRef.current.pauseAsync();
+        audioRef.current.pauseAsync().catch(() => {});
       }
     }
   }, [isPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const interval = setInterval(() => {
+      setCurrentTime((prevTime) => {
+        const nextTime = prevTime + 33;
+        if (totalDuration > 0 && nextTime >= totalDuration) {
+          setIsPlaying(false);
+          if (videoRef.current) {
+            try { videoRef.current.pauseAsync(); } catch (e) {}
+          }
+          if (scrollViewRef.current) {
+            scrollViewRef.current.scrollTo({ x: 0, animated: false });
+          }
+          return 0;
+        }
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: nextTime * PIXELS_PER_MS, animated: false });
+        }
+        return nextTime;
+      });
+    }, 33);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, totalDuration]);
 
   const formatTime = (ms: number) => {
     if (isNaN(ms) || ms < 0) return "00:00";
@@ -660,37 +964,85 @@ export function EditorPage() {
   };
 
   const handlePlayPause = async () => {
-    if (!videoRef.current) return;
     const nextPlayingState = !isPlaying;
+
+    if (nextPlayingState) {
+      if (totalDuration > 0 && currentTime >= totalDuration - 100) {
+        setCurrentTime(0);
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: 0, animated: false });
+        }
+        if (videoRef.current) {
+          try {
+            await videoRef.current.setPositionAsync(0);
+          } catch (e) {}
+        }
+      }
+    }
+
     setIsPlaying(nextPlayingState);
 
-    try {
-      if (nextPlayingState) {
-        const activeStart = isTrimMode ? draftTrimStart : trimStart;
-        const activeEnd = isTrimMode ? draftTrimEnd : (trimEnd > 0 ? trimEnd : totalDuration);
-        if (currentTime >= activeEnd || currentTime < activeStart) {
-          await videoRef.current.setPositionAsync(activeStart);
-          setCurrentTime(activeStart);
+    if (videoRef.current) {
+      try {
+        if (nextPlayingState) {
+          const activeStart = isTrimMode ? draftTrimStart : trimStart;
+          const activeEnd = isTrimMode ? draftTrimEnd : (trimEnd > 0 ? trimEnd : totalDuration);
+          if (currentTime >= activeEnd || currentTime < activeStart) {
+            try {
+              await videoRef.current.setPositionAsync(activeStart);
+            } catch (e) {}
+            setCurrentTime(activeStart);
+          }
+          try {
+            await videoRef.current.setRateAsync(selectedClip?.speed || 1.0, selectedClip?.maintainPitch ?? true);
+          } catch (e) {}
+          await videoRef.current.playAsync();
+        } else {
+          await videoRef.current.pauseAsync();
         }
-        await videoRef.current.setRateAsync(selectedClip?.speed || 1.0, selectedClip?.maintainPitch ?? true);
-        await videoRef.current.playAsync();
-      } else {
-        await videoRef.current.pauseAsync();
+      } catch (e) {
+        console.log("Playback toggle error:", e);
       }
-    } catch (e) {
-      console.log("Playback toggle error:", e);
     }
   };
 
-  const handleSeekToStart = async () => {
-    if (videoRef.current) {
-      const activeStart = isTrimMode ? draftTrimStart : trimStart;
-      await videoRef.current.setPositionAsync(activeStart);
-      if (audioRef.current) {
-        await audioRef.current.setPositionAsync(activeStart);
+  const handlePreviousClip = async () => {
+    // Find active clip index based on global currentTime
+    const currentIndex = videoClips.findIndex(clip => currentTime >= clip.startTime && currentTime < clip.endTime);
+    let activeIndex = currentIndex !== -1 ? currentIndex : videoClips.length - 1;
+
+    if (activeIndex > 0) {
+      const prevClip = videoClips[activeIndex - 1];
+      setCurrentTime(prevClip.startTime);
+      setSelectedClipId(prevClip.id);
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ x: prevClip.startTime * PIXELS_PER_MS, animated: true });
       }
-      setCurrentTime(activeStart);
-      scrollViewRef.current?.scrollTo({ x: activeStart * PIXELS_PER_MS, animated: true });
+      
+      // Update playback source manually if paused
+      if (!isPlaying) {
+        if (videoRef.current) {
+          await videoRef.current.setPositionAsync(prevClip.trimStartOffset || 0);
+        }
+      }
+    }
+  };
+
+  const handleNextClip = async () => {
+    const currentIndex = videoClips.findIndex(clip => currentTime >= clip.startTime && currentTime < clip.endTime);
+    let activeIndex = currentIndex !== -1 ? currentIndex : videoClips.length - 1;
+
+    if (activeIndex < videoClips.length - 1) {
+      const nextClip = videoClips[activeIndex + 1];
+      setCurrentTime(nextClip.startTime);
+      setSelectedClipId(nextClip.id);
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ x: nextClip.startTime * PIXELS_PER_MS, animated: true });
+      }
+
+      if (videoRef.current) {
+        await videoRef.current.setPositionAsync(nextClip.trimStartOffset || 0);
+      }
     }
   };
 
@@ -738,12 +1090,18 @@ export function EditorPage() {
     const tintOverlayOpacity = Math.min(0.4, Math.abs(tintVal) / 250);
 
     return (
-      <View style={styles.previewContainer}>
+      <View style={isPreviewFullscreen ? styles.fullscreenContainer : styles.previewContainer}>
         <View style={styles.previewBox}>
-          {videoUri ? (
+          {activePlaybackClip.clip && isImageUri(activePlaybackClip.clip.videoUri, activePlaybackClip.clip.mediaType) ? (
+            <Image
+              source={{ uri: activePlaybackClip.clip.videoUri }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="contain"
+            />
+          ) : (videoUri || activePlaybackClip.clip?.videoUri) ? (
             <Video
               ref={videoRef}
-              source={{ uri: videoUri }}
+              source={{ uri: activePlaybackClip.clip?.videoUri || videoUri || "" }}
               isMuted={previewMuted || Boolean(selectedClip?.audio?.muted)}
               volume={selectedClip?.audio?.volume !== undefined ? Math.min(1.0, selectedClip.audio.volume / 100) : 1.0}
               style={StyleSheet.absoluteFill}
@@ -751,32 +1109,8 @@ export function EditorPage() {
               shouldPlay={isPlaying}
               rate={selectedClip?.speed || 1.0}
               shouldCorrectPitch={selectedClip?.maintainPitch ?? true}
-              isLooping
               progressUpdateIntervalMillis={32}
-              onPlaybackStatusUpdate={(status) => {
-                if (status.isLoaded) {
-                  const activeEnd = isTrimMode ? draftTrimEnd : (trimEnd > 0 ? trimEnd : totalDuration);
-                  const activeStart = isTrimMode ? draftTrimStart : trimStart;
-
-                  if (status.isPlaying && activeEnd > 0 && status.positionMillis >= activeEnd) {
-                    videoRef.current?.setPositionAsync(activeStart);
-                    setCurrentTime(activeStart);
-                    return;
-                  }
-
-                  if (status.isPlaying) {
-                    setCurrentTime(status.positionMillis);
-                    if (scrollViewRef.current) {
-                      const scrollX = status.positionMillis * PIXELS_PER_MS;
-                      scrollViewRef.current.scrollTo({ x: scrollX, animated: false });
-                    }
-                  }
-
-                  if (status.durationMillis && totalDuration === 0) {
-                    setTotalDuration(status.durationMillis);
-                  }
-                }
-              }}
+              onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
             />
           ) : (
             <Image source={{uri: "https://images.unsplash.com/photo-1517404215738-15263e9f9178"}} style={StyleSheet.absoluteFill} resizeMode="cover" />
@@ -842,24 +1176,84 @@ export function EditorPage() {
             onDeleteLayer={handleDeleteTextLayer}
           />
           
-          <TouchableOpacity 
-            style={styles.fullscreenButton}
-            onPress={() => videoRef.current?.presentFullscreenPlayer()}
-          >
-            <Ionicons name="expand" size={16} color="#fff" />
-          </TouchableOpacity>
+          {!isPreviewFullscreen && (
+            <TouchableOpacity 
+              style={styles.fullscreenButton}
+              onPress={() => setIsPreviewFullscreen(true)}
+            >
+              <Ionicons name="expand" size={16} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
 
+        {isPreviewFullscreen ? (
+          <View style={styles.fullscreenControls}>
+            <View style={styles.fullscreenTopBar}>
+              <TouchableOpacity onPress={() => setIsPreviewFullscreen(false)} style={styles.fullscreenActionBtn}>
+                <Ionicons name="contract" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.fullscreenBottomBar}>
+              <View style={styles.fullscreenScrubberWrap}>
+                <Text style={styles.fullscreenTime}>{formatTime(currentTime)}</Text>
+                <TouchableOpacity 
+                  activeOpacity={1}
+                  style={styles.fullscreenScrubberTrackTouch}
+                  onLayout={(e) => setScrubberWidth(e.nativeEvent.layout.width)}
+                  onPress={(e) => {
+                    if (scrubberWidth > 0 && totalDuration > 0) {
+                      const x = e.nativeEvent.locationX;
+                      const targetTime = Math.max(0, Math.min((x / scrubberWidth) * totalDuration, totalDuration));
+                      setCurrentTime(targetTime);
+                      videoRef.current?.setPositionAsync(targetTime);
+                    }
+                  }}
+                >
+                  <View style={styles.fullscreenScrubberTrack}>
+                    <View style={[styles.fullscreenScrubberFill, { width: totalDuration ? `${(currentTime / totalDuration) * 100}%` : '0%' }]} />
+                  </View>
+                </TouchableOpacity>
+                <Text style={styles.fullscreenTime}>{formatTime(totalDuration)}</Text>
+              </View>
+
+              <View style={styles.fullscreenPlayActions}>
+                <TouchableOpacity onPress={handlePreviousClip} style={styles.fullscreenActionBtn}>
+                  <Ionicons name="play-skip-back" size={28} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={handlePlayPause}
+                  style={styles.fullscreenMainPlayBtn}
+                >
+                  <LinearGradient
+                    colors={isPlaying ? ["#FF453A", "#C0392B"] : ["#007AFF", "#0051A8"]}
+                    style={{width: '100%', height: '100%', borderRadius: 32, justifyContent: 'center', alignItems: 'center'}}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <Ionicons name={isPlaying ? "pause" : "play"} size={36} color="#fff" style={!isPlaying ? { marginLeft: 4 } : undefined} />
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleNextClip} style={styles.fullscreenActionBtn}>
+                  <Ionicons name="play-skip-forward" size={28} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setPreviewMuted(!previewMuted)} style={styles.fullscreenActionBtn}>
+                  <Ionicons name={previewMuted ? "volume-mute" : "volume-high"} size={28} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        ) : (
       <View style={styles.playbackControls}>
-        <View style={{flex: 1}}>
+        <View style={styles.playbackTimeWrap}>
           <Text style={styles.timeTextCompact}>
-            {formatTime(currentTime)} <Text style={{color: '#666666', fontSize: 12}}>/ {formatTime(totalDuration)}</Text>
+            {formatTime(currentTime)} <Text style={styles.timeTotalText}>/ {formatTime(totalDuration)}</Text>
           </Text>
         </View>
         
         <View style={styles.playActionsCompact}>
-          <TouchableOpacity style={styles.compactActionBtn} onPress={handleSeekToStart}>
-            <Ionicons name="play-skip-back" size={20} color="#fff" />
+          <TouchableOpacity style={styles.compactActionBtn} onPress={handlePreviousClip} activeOpacity={0.7}>
+            <Ionicons name="play-skip-back" size={16} color="#fff" />
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -875,30 +1269,31 @@ export function EditorPage() {
             >
               <Ionicons 
                 name={isPlaying ? "pause" : "play"} 
-                size={22} 
+                size={18} 
                 color="#fff" 
-                style={!isPlaying ? { marginLeft: 3 } : undefined} 
+                style={!isPlaying ? { marginLeft: 2 } : undefined} 
               />
             </LinearGradient>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.compactActionBtn}>
-            <Ionicons name="play-skip-forward" size={20} color="#fff" />
+          <TouchableOpacity style={styles.compactActionBtn} onPress={handleNextClip} activeOpacity={0.7}>
+            <Ionicons name="play-skip-forward" size={16} color="#fff" />
           </TouchableOpacity>
         </View>
 
-        <View style={{flex: 1, flexDirection: 'row', justifyContent: 'flex-end', gap: 16, alignItems: 'center'}}>
-          <TouchableOpacity>
-            <Ionicons name="options-outline" size={22} color="#fff" />
+        <View style={styles.playbackRightActions}>
+          <TouchableOpacity style={styles.rightActionBtn} activeOpacity={0.7}>
+            <Ionicons name="options-outline" size={18} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity>
-            <Ionicons name="arrow-undo-outline" size={22} color="#fff" />
+          <TouchableOpacity style={styles.rightActionBtn} activeOpacity={0.7}>
+            <Ionicons name="arrow-undo-outline" size={18} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity>
-            <Ionicons name="arrow-redo-outline" size={22} color="#666666" />
+          <TouchableOpacity style={styles.rightActionBtn} activeOpacity={0.7}>
+            <Ionicons name="arrow-redo-outline" size={18} color="#666666" />
           </TouchableOpacity>
         </View>
       </View>
+        )}
     </View>
   );
 };
@@ -922,20 +1317,28 @@ export function EditorPage() {
                   <View style={styles.plusBadge}><Ionicons name="add" size={10} color="#000" /></View>
                 </View>
               </TouchableOpacity>
-              <View style={[styles.trackIconWrap, { height: 32 }]}>
-                <View style={styles.textIconBorder}>
-                  <Text style={{color: "#8E8E93", fontWeight: '700', fontSize: 13}}>T</Text>
+              <TouchableOpacity activeOpacity={0.8} onPress={handleAddTextLayer}>
+                <View style={[styles.trackIconWrap, { height: 32 }]}>
+                  <View style={styles.textIconBorder}>
+                    <Text style={{color: "#8E8E93", fontWeight: '700', fontSize: 13}}>T</Text>
+                  </View>
+                  <View style={styles.plusBadge}><Ionicons name="add" size={10} color="#000" /></View>
                 </View>
-                <View style={styles.plusBadge}><Ionicons name="add" size={10} color="#000" /></View>
-              </View>
-              <View style={[styles.trackIconWrap, { height: 32 }]}>
-                <Ionicons name="image-outline" size={20} color="#8E8E93" style={{ transform: [{ scaleX: -1 }, { rotate: '15deg' }] }} />
-                <View style={styles.plusBadge}><Ionicons name="add" size={10} color="#000" /></View>
-              </View>
-              <View style={[styles.trackIconWrap, { height: 60 }]}>
-                <Ionicons name="film" size={20} color="#8E8E93" />
-                <View style={styles.plusBadge}><Ionicons name="add" size={10} color="#000" /></View>
-              </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity activeOpacity={0.8} onPress={handleAddMediaPress}>
+                <View style={[styles.trackIconWrap, { height: 32 }]}>
+                  <Ionicons name="image-outline" size={20} color="#8E8E93" style={{ transform: [{ scaleX: -1 }, { rotate: '15deg' }] }} />
+                  <View style={styles.plusBadge}><Ionicons name="add" size={10} color="#000" /></View>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity activeOpacity={0.8} onPress={handleAddMediaPress}>
+                <View style={[styles.trackIconWrap, { height: 60 }]}>
+                  <Ionicons name="film" size={20} color="#8E8E93" />
+                  <View style={styles.plusBadge}><Ionicons name="add" size={10} color="#000" /></View>
+                </View>
+              </TouchableOpacity>
               <TouchableOpacity 
                 activeOpacity={0.8} 
                 onPress={() => setPreviewMuted(!previewMuted)}
@@ -952,7 +1355,7 @@ export function EditorPage() {
             ref={scrollViewRef}
             horizontal 
             showsHorizontalScrollIndicator={false} 
-            contentContainerStyle={[styles.timelineScroll, { paddingLeft: 5, paddingRight: 200 }]}
+            contentContainerStyle={[styles.timelineScroll, { paddingLeft: 85, paddingRight: 300 }]}
             scrollEventThrottle={16}
             onScroll={(e) => {
               if (!isPlaying) {
@@ -969,7 +1372,6 @@ export function EditorPage() {
             }}
           >
             <View style={styles.tracks}>
-              {useMemo(() => (
                 <>
                   <View style={[styles.vnTrack, { height: 32 }, isTrimMode && { opacity: 0.35 }]}>
                     {musicTrack ? (
@@ -1060,9 +1462,10 @@ export function EditorPage() {
 
                   <View style={[styles.vnTrack, { height: 32 }, isTrimMode && { opacity: 0.35 }]}>
                     {overlayLayers.length > 0 ? (
-                      <View style={{ flexDirection: "row", gap: 4 }}>
+                      <View style={{ position: "relative", width: projectTimelineWidth, height: 32 }}>
                         {overlayLayers.map((layer) => {
-                          const durationMs = Math.max(100, layer.endTime - layer.startTime);
+                          const leftPx = layer.startTime * PIXELS_PER_MS;
+                          const durationMs = Math.max(500, layer.endTime - layer.startTime);
                           const widthPx = durationMs * PIXELS_PER_MS;
                           const isSelected = layer.id === selectedOverlayLayerId;
 
@@ -1074,14 +1477,22 @@ export function EditorPage() {
                                 setSelectedOverlayLayerId(layer.id);
                                 setSelectedTool("overlay");
                               }}
+                              style={{
+                                position: "absolute",
+                                left: leftPx,
+                                width: widthPx,
+                                height: 28,
+                                top: 2,
+                              }}
                             >
                               <View
                                 style={[
                                   styles.vnClip,
                                   {
-                                    width: widthPx,
-                                    backgroundColor: "#5C3A7A",
-                                    borderColor: isSelected ? "#FFCC00" : "#AF52DE",
+                                    width: "100%",
+                                    height: "100%",
+                                    backgroundColor: layer.type === "sticker" ? "#FF9500" : "#5C3A7A",
+                                    borderColor: isSelected ? "#FFCC00" : (layer.type === "sticker" ? "#FFB340" : "#AF52DE"),
                                     borderWidth: isSelected ? 2 : 1,
                                     paddingHorizontal: 8,
                                     flexDirection: "row",
@@ -1089,7 +1500,12 @@ export function EditorPage() {
                                   },
                                 ]}
                               >
-                                <Ionicons name="layers-outline" size={14} color="#FFCC00" style={{ marginRight: 4 }} />
+                                <Ionicons 
+                                  name={layer.type === "sticker" ? "happy-outline" : "layers-outline"} 
+                                  size={14} 
+                                  color="#FFCC00" 
+                                  style={{ marginRight: 4 }} 
+                                />
                                 <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }} numberOfLines={1}>
                                   {layer.name}
                                 </Text>
@@ -1099,9 +1515,9 @@ export function EditorPage() {
                         })}
                       </View>
                     ) : (
-                      <TouchableOpacity activeOpacity={0.8} onPress={() => handleAddOverlayLayer("image")}>
+                      <TouchableOpacity activeOpacity={0.8} onPress={() => handleAddOverlayLayer("sticker")}>
                         <View style={[styles.vnClip, { width: projectTimelineWidth, backgroundColor: "#2A2A35" }]}>
-                          <Text style={styles.vnPlaceholderText}>Tap to add sticker / Overlay</Text>
+                          <Text style={styles.vnPlaceholderText}>Tap to add sticker / overlay</Text>
                         </View>
                       </TouchableOpacity>
                     )}
@@ -1133,11 +1549,11 @@ export function EditorPage() {
                               },
                             ]}
                           >
-                            <View style={[styles.vnThumbnails, { marginLeft: -clipOffset }]}>
-                              {[...Array(Math.max(1, Math.ceil((totalDuration * PIXELS_PER_MS) / THUMBNAIL_WIDTH)))].map((_, i) => (
+                            <View style={[styles.vnThumbnails, { marginLeft: -(clip.trimStartOffset || 0) * PIXELS_PER_MS }]}>
+                              {[...Array(Math.max(1, Math.ceil(((clip.originalDuration || 5000) * PIXELS_PER_MS) / THUMBNAIL_WIDTH)))].map((_, i) => (
                                 <Image
                                   key={i}
-                                  source={{ uri: videoUri || "https://images.unsplash.com/photo-1517404215738-15263e9f9178" }}
+                                  source={{ uri: clip.thumbnailUri || clip.videoUri || videoUri || "https://images.unsplash.com/photo-1517404215738-15263e9f9178" }}
                                   style={styles.vnThumb}
                                 />
                               ))}
@@ -1201,6 +1617,23 @@ export function EditorPage() {
                         </View>
                       </View>
                     )}
+                    
+                    <TouchableOpacity 
+                      activeOpacity={0.8} 
+                      onPress={handleAddMediaPress}
+                      style={{
+                        width: 44,
+                        height: 56,
+                        backgroundColor: "#2A2A35",
+                        borderRadius: 8,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        marginLeft: 8,
+                        marginVertical: 2,
+                      }}
+                    >
+                      <Ionicons name="add" size={24} color="#fff" />
+                    </TouchableOpacity>
                   </View>
                   
                   <View style={[styles.vnTrack, { height: 24 }, isTrimMode && { opacity: 0.35 }]}>
@@ -1218,7 +1651,6 @@ export function EditorPage() {
                     ))}
                   </View>
                 </>
-              ), [videoUri, musicTrack, totalDuration, selectedTimelineClip, isTrimMode, trimStart, trimEnd, draftTrimStart, draftTrimEnd, isSnappingLeft, isSnappingRight, videoClips, selectedClipId, projectTimelineWidth, textLayers, overlayLayers, selectedTextLayerId, selectedOverlayLayerId])}
             </View>
           </ScrollView>
 
@@ -1293,7 +1725,7 @@ export function EditorPage() {
     if (!selectedTool && !selectedTimelineClip) return null;
     if (isTrimMode) return null;
 
-    if (selectedTool === "overlay") {
+    if (selectedTool === "overlay" || selectedTool === "stickers") {
       return (
         <OverlayPanel
           layers={overlayLayers}
@@ -1456,31 +1888,33 @@ export function EditorPage() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: "#121212" }]} edges={['top']}>
-      {renderTopToolbar()}
+      {!isPreviewFullscreen && renderTopToolbar()}
       {renderVideoPreview()}
-      <View style={{ flex: 1, position: 'relative' }}>
-        {renderTimeline()}
-        {!isTrimMode && (
-          <TouchableOpacity
-            activeOpacity={1}
-            onPressIn={handleAiPressIn}
-            onPressOut={handleAiPressOut}
-            style={styles.floatingAiBtnWrap}
-          >
-            <Animated.View style={[styles.floatingAiBtn, { transform: [{ scale: aiScaleAnim }] }]}>
-              <LinearGradient
-                colors={["#3B82F6", "#6D28D9"]}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              />
-              <Ionicons name="sparkles" size={20} color="#fff" />
-            </Animated.View>
-          </TouchableOpacity>
-        )}
-      </View>
-      {(selectedTool || selectedTimelineClip) && renderPropertiesPanel()}
-      {renderEditingToolbar()}
+      {!isPreviewFullscreen && (
+        <View style={{ flex: 1, position: 'relative' }}>
+          {renderTimeline()}
+          {!isTrimMode && (
+            <TouchableOpacity
+              activeOpacity={1}
+              onPressIn={handleAiPressIn}
+              onPressOut={handleAiPressOut}
+              style={styles.floatingAiBtnWrap}
+            >
+              <Animated.View style={[styles.floatingAiBtn, { transform: [{ scale: aiScaleAnim }] }]}>
+                <LinearGradient
+                  colors={["#3B82F6", "#6D28D9"]}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                />
+                <Ionicons name="sparkles" size={20} color="#fff" />
+              </Animated.View>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+      {!isPreviewFullscreen && (selectedTool || selectedTimelineClip) && renderPropertiesPanel()}
+      {!isPreviewFullscreen && renderEditingToolbar()}
       
       <MusicLibrarySheet 
         visible={musicSheetVisible} 
@@ -1548,6 +1982,84 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
   },
+  fullscreenContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000',
+    zIndex: 9999,
+    elevation: 9999,
+    flex: 1,
+  },
+  fullscreenControls: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'space-between',
+    padding: 24,
+    zIndex: 10000,
+    elevation: 10000,
+    pointerEvents: 'box-none',
+  },
+  fullscreenTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 40,
+    pointerEvents: 'box-none',
+  },
+  fullscreenBottomBar: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  fullscreenScrubberWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+    gap: 12,
+  },
+  fullscreenScrubberTrackTouch: {
+    flex: 1,
+    height: 24,
+    justifyContent: 'center',
+  },
+  fullscreenScrubberTrack: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  fullscreenScrubberFill: {
+    height: '100%',
+    backgroundColor: '#fff',
+  },
+  fullscreenTime: {
+    color: '#fff',
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+    width: 44,
+    textAlign: 'center',
+  },
+  fullscreenPlayActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 32,
+  },
+  fullscreenActionBtn: {
+    padding: 8,
+  },
+  fullscreenMainPlayBtn: {
+    width: 64,
+    height: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   previewBox: {
     flex: 1,
     backgroundColor: "#000",
@@ -1570,40 +2082,67 @@ const styles = StyleSheet.create({
   playbackControls: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    width: "100%",
+  },
+  playbackTimeWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
   },
   timeTextCompact: {
-    fontSize: 12,
-    fontWeight: "500",
+    fontSize: 11,
+    fontWeight: "600",
     color: "#fff",
     fontVariant: ["tabular-nums"],
+  },
+  timeTotalText: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 11,
   },
   playActionsCompact: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 24,
+    justifyContent: "center",
+    gap: 8,
   },
   compactActionBtn: {
-    padding: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   mainPlayBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     shadowColor: "#007AFF",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowRadius: 6,
+    elevation: 4,
   },
   mainPlayBtnGradient: {
     width: "100%",
     height: "100%",
-    borderRadius: 22,
+    borderRadius: 19,
     justifyContent: "center",
     alignItems: "center",
+  },
+  playbackRightActions: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  rightActionBtn: {
+    padding: 2,
   },
   sliderTrack: {
     width: "100%",

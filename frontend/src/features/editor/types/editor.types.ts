@@ -115,6 +115,11 @@ export interface AudioSettings {
 
 export interface VideoClip {
   id: string;
+  videoUri?: string;
+  thumbnailUri?: string;
+  originalDuration?: number;
+  trimStartOffset?: number;
+  trimEndOffset?: number;
   startTime: number;
   endTime: number;
   speed: number;
@@ -124,6 +129,7 @@ export interface VideoClip {
   frameBlending: boolean;
   adjustments: ColorAdjustments;
   audio: AudioSettings;
+  mediaType?: "video" | "image";
 }
 
 export const DEFAULT_COLOR_ADJUSTMENTS: ColorAdjustments = {

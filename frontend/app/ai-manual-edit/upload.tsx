@@ -30,12 +30,13 @@ const COLORS = {
   placeholder: "#7A8EA8",
   textSecondary: "#5F7695",
   disabledBlue: "#AFC4E8",
+  surface: "rgba(255, 255, 255, 0.12)",
 };
 
 export default function AIUploadMediaPage() {
   const router = useRouter();
   const [mediaSelected, setMediaSelected] = useState(false);
-  const [media, setMedia] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [media, setMedia] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [prompt, setPrompt] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [selectedChips, setSelectedChips] = useState<string[]>([]);
@@ -61,12 +62,18 @@ export default function AIUploadMediaPage() {
   const handlePickGallery = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: true,
+      allowsEditing: false, // Must be false for multiple selection on some platforms
+      allowsMultipleSelection: true,
       quality: 1,
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      setMedia(result.assets[0]);
+      setMedia((prev) => {
+        // Filter out duplicates based on URI to avoid issues if user selects the same video again
+        const existingUris = new Set(prev.map(a => a.uri));
+        const newAssets = result.assets.filter(a => !existingUris.has(a.uri));
+        return [...prev, ...newAssets];
+      });
       setMediaSelected(true);
     }
   };
@@ -86,22 +93,25 @@ export default function AIUploadMediaPage() {
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      setMedia(result.assets[0]);
+      setMedia((prev) => [...prev, result.assets[0]]);
       setMediaSelected(true);
     }
   };
 
-  const handleRemoveMedia = () => {
-    setMediaSelected(false);
-    setMedia(null);
+  const handleRemoveMedia = (index: number) => {
+    setMedia((prev) => {
+      const newMedia = [...prev];
+      newMedia.splice(index, 1);
+      if (newMedia.length === 0) setMediaSelected(false);
+      return newMedia;
+    });
   };
 
   const handleContinue = () => {
     router.push({
       pathname: "/ai-manual-edit/processing",
       params: { 
-        videoUri: media?.uri, 
-        duration: media?.duration 
+        videosData: JSON.stringify(media.map(m => ({ uri: m.uri, duration: m.duration })))
       }
     });
   };
@@ -181,26 +191,38 @@ export default function AIUploadMediaPage() {
             </TouchableOpacity>
           </Animated.View>
         ) : (
-          <View style={styles.previewCard}>
-            {media?.uri ? (
-              <Image source={{ uri: media.uri }} style={styles.previewThumbnail} />
-            ) : (
-              <View style={[styles.previewThumbnail, { backgroundColor: COLORS.primaryDark }]}>
-                <Ionicons name="play-circle" size={32} color={COLORS.white} />
-              </View>
-            )}
-            <View style={styles.previewInfo}>
-              <Text style={styles.previewName} numberOfLines={1}>
-                {media?.fileName || media?.uri?.split('/').pop() || "Selected Media"}
+          <View style={[styles.previewCard, { flexDirection: 'column', alignItems: 'stretch' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: COLORS.white, fontSize: 16, fontWeight: '600' }}>
+                Selected Media ({media.length})
               </Text>
-              <Text style={styles.previewMeta}>
-                {media?.duration ? `${(media.duration / 1000).toFixed(1)}s` : 'Video'} • {media?.fileSize ? `${(media.fileSize / (1024 * 1024)).toFixed(1)} MB` : 'Media Ready'}
-              </Text>
-              <TouchableOpacity style={styles.replaceBtn} onPress={handleRemoveMedia}>
-                <Ionicons name="refresh-outline" size={14} color={COLORS.primaryBlue} />
-                <Text style={styles.replaceBtnText}>Replace Media</Text>
+              <TouchableOpacity onPress={handlePickGallery} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}>
+                <Ionicons name="add" size={16} color={COLORS.primaryBlue} />
+                <Text style={{ color: COLORS.primaryBlue, fontSize: 13, marginLeft: 4, fontWeight: '500' }}>Add More</Text>
               </TouchableOpacity>
             </View>
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
+              {media.map((item, index) => (
+                <View key={`${item.uri}-${index}`} style={{ width: 120, position: 'relative' }}>
+                  <Image source={{ uri: item.uri }} style={{ width: 120, height: 160, borderRadius: 12, backgroundColor: COLORS.primaryDark }} />
+                  <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 8, backgroundColor: 'rgba(0,0,0,0.5)', borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }}>
+                    <Text style={{ color: COLORS.white, fontSize: 10 }} numberOfLines={1}>
+                      {item.fileName || `Video ${index + 1}`}
+                    </Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 9 }}>
+                      {item.duration ? `${(item.duration / 1000).toFixed(1)}s` : ''}
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={{ position: 'absolute', top: -6, right: -6, backgroundColor: COLORS.primaryDark, borderRadius: 12, width: 24, height: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.background }}
+                    onPress={() => handleRemoveMedia(index)}
+                  >
+                    <Ionicons name="close" size={14} color={COLORS.white} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         )}
 

@@ -134,7 +134,7 @@ function HeroSlider({ theme, router }: { theme: any, router: any }) {
                 
                 <View style={styles.heroActions}>
                   <TouchableOpacity
-                    onPress={() => router.push(item.type === "template" ? "/(tabs)/templates" : "/editor/new")}
+                    onPress={() => router.push(item.type === "template" ? "/(tabs)/templates" : "/ai-manual-edit/upload")}
                     activeOpacity={0.9}
                   >
                     <LinearGradient colors={["#fff", "#f0f0f0"]} style={styles.heroCtaBtn}>
@@ -142,7 +142,7 @@ function HeroSlider({ theme, router }: { theme: any, router: any }) {
                     </LinearGradient>
                   </TouchableOpacity>
                   {item.type === "ai" && (
-                    <TouchableOpacity style={styles.heroSecCtaBtn} onPress={() => router.push("/editor/new")}>
+                    <TouchableOpacity style={styles.heroSecCtaBtn} onPress={() => router.push("/ai-manual-edit/upload")}>
                       <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>Import Video</Text>
                     </TouchableOpacity>
                   )}
@@ -211,7 +211,7 @@ function AIToolsRail({ theme, router }: { theme: any, router: any }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}>
       {AI_TOOLS.map((tool) => (
-        <TouchableOpacity key={tool.id} activeOpacity={0.8} onPress={() => router.push("/editor/new")}>
+        <TouchableOpacity key={tool.id} activeOpacity={0.8} onPress={() => router.push("/ai-manual-edit/upload")}>
           <View style={[styles.aiToolCard, { backgroundColor: theme.colors.surfaceElevated, borderRadius: theme.radius.lg }]}>
             <LinearGradient colors={tool.colors as [string, string]} style={styles.aiToolIconBox}>
               <Ionicons name={tool.icon as any} size={18} color="#fff" />
@@ -344,10 +344,10 @@ export function DashboardPage() {
 
   const quickActions = useMemo<QuickAction[]>(
     () => [
-      { id: "new", label: "New Project", subtitle: "Start from scratch", icon: "add", gradient: ["#1D2B64", "#3B6CE7"], onPress: () => router.push("/editor/new") },
-      { id: "ai", label: "AI Edit", subtitle: "Auto generate", icon: "sparkles", gradient: ["#3B6CE7", "#8CC8E8"], onPress: () => router.push("/editor/new") },
-      { id: "import", label: "Import Media", subtitle: "From camera roll", icon: "images", gradient: ["#1D2B64", "#3B6CE7"], onPress: () => router.push("/(tabs)/assets") },
-      { id: "captions", label: "AI Captions", subtitle: "Speech to text", icon: "text", gradient: ["#3B6CE7", "#8CC8E8"], onPress: () => router.push("/editor/new") },
+      { id: "new", label: "New Project", subtitle: "Start from scratch", icon: "add", gradient: ["#1D2B64", "#3B6CE7"], onPress: () => router.push("/ai-manual-edit/upload") },
+      { id: "ai", label: "AI Edit", subtitle: "Auto generate", icon: "sparkles", gradient: ["#3B6CE7", "#8CC8E8"], onPress: () => router.push("/ai-manual-edit/upload") },
+      { id: "import", label: "Import Media", subtitle: "From camera roll", icon: "images", gradient: ["#1D2B64", "#3B6CE7"], onPress: () => router.push("/ai-manual-edit/upload") },
+      { id: "captions", label: "AI Captions", subtitle: "Speech to text", icon: "text", gradient: ["#3B6CE7", "#8CC8E8"], onPress: () => router.push("/ai-manual-edit/upload") },
     ],
     [router],
   );
