@@ -21,6 +21,7 @@ import { useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme";
 import { useAuthStore } from "@/src/store/auth.store";
+import { LegalModal } from "@/src/components/LegalModal";
 
 export function RegisterPage() {
   const { theme, isDark } = useTheme();
@@ -33,7 +34,13 @@ export function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
+  const [modalType, setModalType] = useState<"terms" | "privacy" | null>(null);
+  const [termsViewed, setTermsViewed] = useState(false);
+  const [privacyViewed, setPrivacyViewed] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  
+  const canAgree = termsViewed && privacyViewed;
   
   const [loadingProvider, setLoadingProvider] = useState<"email" | "google" | "apple" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +75,7 @@ export function RegisterPage() {
       return;
     }
     if (!agreedToTerms) {
-      setError("You must agree to the Terms of Service.");
+      setError("Please accept the Terms of Service and Privacy Policy to continue.");
       return;
     }
 
@@ -246,22 +253,44 @@ export function RegisterPage() {
                 </TouchableOpacity>
               </View>
 
+              {/* Legal Review Status */}
+              {(termsViewed || privacyViewed) && (
+                <View style={styles.reviewStatusRow}>
+                  {termsViewed && <Text style={styles.reviewedText}>✓ Terms reviewed</Text>}
+                  {privacyViewed && <Text style={styles.reviewedText}>✓ Privacy reviewed</Text>}
+                </View>
+              )}
+
               {/* Checkbox */}
               <TouchableOpacity 
                 style={styles.checkboxContainer} 
                 activeOpacity={0.8}
-                onPress={() => setAgreedToTerms(!agreedToTerms)}
+                onPress={() => {
+                  if (canAgree) {
+                    setAgreedToTerms(!agreedToTerms);
+                  }
+                }}
               >
                 <View style={[styles.checkbox, { 
                   backgroundColor: agreedToTerms ? theme.colors.primary : 'transparent',
-                  borderColor: agreedToTerms ? theme.colors.primary : theme.colors.border
+                  borderColor: agreedToTerms ? theme.colors.primary : (canAgree ? theme.colors.border : theme.colors.border + '80'),
+                  opacity: canAgree ? 1 : 0.5
                 }]}>
                   {agreedToTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
                 </View>
                 <Text style={[styles.checkboxText, { color: theme.colors.textSecondary }]}>
-                  I agree to the Terms of Service and Privacy Policy.
+                  I agree to the{" "}
+                  <Text style={styles.legalLink} onPress={() => setModalType("terms")} suppressHighlighting>Terms of Service</Text>
+                  {" "}and{" "}
+                  <Text style={styles.legalLink} onPress={() => setModalType("privacy")} suppressHighlighting>Privacy Policy</Text>.
                 </Text>
               </TouchableOpacity>
+              
+              {!canAgree && (
+                <Text style={styles.helperText}>
+                  Please review the <Text style={styles.legalLink} onPress={() => setModalType("terms")} suppressHighlighting>Terms of Service</Text> and <Text style={styles.legalLink} onPress={() => setModalType("privacy")} suppressHighlighting>Privacy Policy</Text> first.
+                </Text>
+              )}
 
               <TouchableOpacity
                 style={[styles.primaryButton, { backgroundColor: theme.colors.primary }]}
@@ -293,14 +322,22 @@ export function RegisterPage() {
             </View>
 
             <View style={styles.footer}>
-              <Text style={[styles.termsText, { color: theme.colors.textMuted }]}>
-                By continuing, you agree to our Terms of Service and Privacy Policy.
-              </Text>
+              {/* Footer text intentionally empty or you can place something else here. The user said keep the login text at the bottom. The terms text is now part of the checkbox above. */}
             </View>
 
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
+      
+      <LegalModal 
+        visible={modalType !== null}
+        type={modalType}
+        onClose={() => setModalType(null)}
+        onScrolledToBottom={() => {
+          if (modalType === "terms") setTermsViewed(true);
+          if (modalType === "privacy") setPrivacyViewed(true);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -413,7 +450,7 @@ const styles = StyleSheet.create({
   checkboxContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 8, // changed from 24 to 8 to accommodate helper text
   },
   checkbox: {
     width: 20,
@@ -427,6 +464,27 @@ const styles = StyleSheet.create({
   checkboxText: {
     fontSize: 13,
     flex: 1,
+  },
+  legalLink: {
+    color: "#3B6CE7",
+    fontWeight: "700",
+  },
+  helperText: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginBottom: 24,
+    marginLeft: 30,
+  },
+  reviewStatusRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 8,
+    marginLeft: 30,
+  },
+  reviewedText: {
+    fontSize: 12,
+    color: "#10B981", // success green
+    fontWeight: "600",
   },
   primaryButton: {
     flexDirection: "row",

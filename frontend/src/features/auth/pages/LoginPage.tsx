@@ -21,6 +21,7 @@ import { Link, useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme";
 import { useAuthStore } from "@/src/store/auth.store";
+import { LegalModal } from "@/src/components/LegalModal";
 
 export function LoginPage() {
   const { theme, isDark } = useTheme();
@@ -30,6 +31,7 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [modalType, setModalType] = useState<"terms" | "privacy" | null>(null);
   
   const [loadingProvider, setLoadingProvider] = useState<"email" | "google" | "apple" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -211,13 +213,22 @@ export function LoginPage() {
 
             <View style={styles.footer}>
               <Text style={[styles.termsText, { color: theme.colors.textMuted }]}>
-                By continuing, you agree to our Terms of Service and Privacy Policy.
+                By continuing, you agree to our{" "}
+                <Text style={styles.legalLink} onPress={() => setModalType("terms")} suppressHighlighting>Terms of Service</Text>
+                {" "}and{" "}
+                <Text style={styles.legalLink} onPress={() => setModalType("privacy")} suppressHighlighting>Privacy Policy</Text>.
               </Text>
             </View>
 
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
+
+      <LegalModal 
+        visible={modalType !== null}
+        type={modalType}
+        onClose={() => setModalType(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -374,5 +385,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 18,
     paddingHorizontal: 20,
+  },
+  legalLink: {
+    color: "#3B6CE7",
+    fontWeight: "700",
   },
 });

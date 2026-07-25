@@ -31,26 +31,26 @@ const AI_SETTINGS = [
 ];
 
 const ACCOUNT = [
-  { icon: "person", title: "Profile" },
-  { icon: "information-circle", title: "Account Information" },
-  { icon: "mail", title: "Email", value: "user@veytrix.com" },
-  { icon: "call", title: "Phone Number" },
-  { icon: "key", title: "Password" },
-  { icon: "link", title: "Linked Accounts" },
-  { icon: "logo-google", title: "Google", value: "Linked" },
-  { icon: "logo-apple", title: "Apple", value: "Linked" },
-  { icon: "lock-closed", title: "Privacy" },
+  { icon: "person", title: "Profile", route: "/settings/account-information/Profile" },
+  { icon: "information-circle", title: "Account Information", route: "/settings/account-information/AccountInformation" },
+  { icon: "mail", title: "Email", value: "user@veytrix.com", route: "/settings/account-information/Email" },
+  { icon: "call", title: "Phone Number", route: "/settings/account-information/PhoneNumber" },
+  { icon: "key", title: "Password", route: "/settings/account-information/Password" },
+  { icon: "link", title: "Linked Accounts", route: "/settings/account-information/LinkedAccounts" },
+  { icon: "logo-google", title: "Google", value: "Linked", route: "/settings/account-information/GoogleAccount" },
+  { icon: "logo-apple", title: "Apple", value: "Linked", route: "/settings/account-information/AppleAccount" },
+  { icon: "lock-closed", title: "Privacy", route: "/settings/account-information/Privacy" },
 ];
 
 const SECURITY = [
   { icon: "shield-checkmark", title: "Security" },
-  { icon: "finger-print", title: "2FA", value: "Enabled" },
-  { icon: "desktop", title: "Sessions" },
-  { icon: "phone-portrait", title: "Devices" },
-  { icon: "laptop", title: "Active Devices", value: "2" },
-  { icon: "time", title: "Login History" },
-  { icon: "checkmark-done-circle", title: "Trusted Devices" },
-  { icon: "trash-bin", title: "Delete Account", isDanger: true },
+  { icon: "finger-print", title: "2FA", value: "Enabled", route: "/settings/account-information/TwoFactorAuthentication" },
+  { icon: "desktop", title: "Sessions", route: "/settings/account-information/ActiveSessions" },
+];
+
+const ACCOUNT_MANAGEMENT = [
+  { icon: "download", title: "Download My Data", route: "/settings/account-information/DownloadMyData" },
+  { icon: "trash-bin", title: "Delete Account", isDanger: true, route: "/settings/account-information/DeleteAccount" },
 ];
 
 const NOTIFICATIONS = [
@@ -358,6 +358,11 @@ export function ProfilePage() {
         <View style={styles.section}>
           <SectionHeader title="Privacy & Security" />
           <ListSection items={SECURITY} theme={theme} router={router} />
+        </View>
+
+        <View style={styles.section}>
+          <SectionHeader title="Account Management" />
+          <ListSection items={ACCOUNT_MANAGEMENT} theme={theme} router={router} />
         </View>
 
         <View style={styles.section}>

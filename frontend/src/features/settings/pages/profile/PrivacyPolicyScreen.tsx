@@ -8,20 +8,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const PRIVACY_SECTIONS = [
-  { id: 1, title: "Information We Collect", icon: "information-circle", content: "We collect information you provide directly to us, such as when you create or modify your account, request on-demand services, contact customer support, or otherwise communicate with us." },
-  { id: 2, title: "Account Information", icon: "person", content: "When you sign up for an account, we collect your name, email address, password, and optionally your profile picture and phone number." },
-  { id: 3, title: "Uploaded Media", icon: "cloud-upload", content: "We collect and securely store the videos, images, and audio files you upload to our servers for the purpose of editing and AI processing." },
-  { id: 4, title: "AI Processing", icon: "color-wand", content: "To provide AI features like auto-captioning and smart editing, your media may be processed by our proprietary AI models. This data is strictly used for your editing sessions and is not used to train public models without consent." },
-  { id: 5, title: "Cloud Storage", icon: "cloud", content: "Your projects and exports are saved in our secure cloud infrastructure to allow seamless syncing across your devices." },
-  { id: 6, title: "Cookies", icon: "cafe", content: "We use cookies and similar tracking technologies to track the activity on our Service and hold certain information to improve your experience." },
-  { id: 7, title: "Analytics", icon: "stats-chart", content: "We may use third-party Service Providers to monitor and analyze the use of our Service to help us improve the platform." },
-  { id: 8, title: "Security", icon: "shield-checkmark", content: "We value your trust in providing us your Personal Data, thus we are striving to use commercially acceptable means of protecting it. We employ bank-level encryption for all data in transit." },
-  { id: 9, title: "Third-party Services", icon: "apps", content: "We may employ third party companies and individuals to facilitate our Service, to provide the Service on our behalf, or to perform Service-related services." },
-  { id: 10, title: "Data Retention", icon: "time", content: "We will retain your Personal Data only for as long as is necessary for the purposes set out in this Privacy Policy." },
-  { id: 11, title: "User Rights", icon: "hand-left", content: "You have the right to access, update or delete the information we have on you. Whenever made possible, you can access, update or request deletion of your Personal Data directly within your account settings section." },
-  { id: 12, title: "Delete Account", icon: "trash", content: "If you wish to delete your account, you can do so from the Settings > Security menu. All your uploaded media and personal data will be permanently deleted from our servers." },
-];
+import { PRIVACY_SECTIONS } from "@/src/constants/legalContent";
 
 export function PrivacyPolicyScreen() {
   const insets = useSafeAreaInsets();
