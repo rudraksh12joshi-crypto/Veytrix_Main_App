@@ -17,6 +17,7 @@ import { TrimToolbar } from "../panels/TrimToolbar";
 import { TextPanel } from "../panels/TextPanel";
 import { AudioPanel } from "../panels/AudioPanel";
 import { OverlayPanel } from "../panels/OverlayPanel";
+import { RotatePanel } from "../panels/RotatePanel";
 import { TextOverlay } from "../text/TextOverlay";
 import { OverlayOverlay } from "../overlay/OverlayOverlay";
 
@@ -98,8 +99,8 @@ const ToolButton = React.memo(function ToolButton({
       disabled={isDisabled}
       style={{ opacity: isDisabled ? 0.35 : 1 }}
     >
-      <Animated.View style={[styles.toolBtn, { transform: [{ scale: scaleAnim }] }]}>
-        <View style={[styles.toolIconBox, isActive && styles.toolIconBoxActive]}>
+      <Animated.View style={[{ paddingVertical: 6, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', width: 68 }, { transform: [{ scale: scaleAnim }] }]}>
+        <View style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.06)", justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }, isActive && { backgroundColor: "rgba(37,99,235,0.2)", borderWidth: 1, borderColor: "#3B82F6" }]}>
           {isActive && (
             <LinearGradient
               colors={["#2563EB", "#3B82F6", "#60A5FA"]}
@@ -116,7 +117,7 @@ const ToolButton = React.memo(function ToolButton({
         </View>
         <Text
           style={[
-            styles.toolLabel,
+            { fontSize: 11, fontWeight: "500", marginTop: 6, textAlign: 'center' },
             { color: isActive ? "#fff" : isDisabled ? "#555" : "rgba(160,160,175,0.9)" },
           ]}
           numberOfLines={1}
@@ -193,10 +194,106 @@ export function EditorPage() {
     return totalDuration * PIXELS_PER_MS || 300;
   }, [videoClips, totalDuration]);
 
-  const handleAddOverlayLayer = (type: OverlayType) => {
+
+
+  interface EditorHistorySnapshot {
+    videoClips: VideoClip[];
+    textLayers: TextLayer[];
+    overlayLayers: OverlayLayer[];
+    totalDuration: number;
+    selectedClipId: string | null;
+    selectedTextLayerId: string | null;
+    selectedOverlayLayerId: string | null;
+    currentTime: number;
+    musicTrack: MusicTrack | null;
+  }
+
+  const [undoStack, setUndoStack] = useState<EditorHistorySnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<EditorHistorySnapshot[]>([]);
+
+  const currentStateRef = useRef<EditorHistorySnapshot>({
+    videoClips: [],
+    textLayers: [],
+    overlayLayers: [],
+    totalDuration: 0,
+    selectedClipId: null,
+    selectedTextLayerId: null,
+    selectedOverlayLayerId: null,
+    currentTime: 0,
+    musicTrack: null,
+  });
+
+  useEffect(() => {
+    currentStateRef.current = {
+      videoClips,
+      textLayers,
+      overlayLayers,
+      totalDuration,
+      selectedClipId,
+      selectedTextLayerId,
+      selectedOverlayLayerId,
+      currentTime,
+      musicTrack,
+    };
+  });
+
+  const recordHistory = useCallback(() => {
+    const snapshot: EditorHistorySnapshot = JSON.parse(JSON.stringify(currentStateRef.current));
+    setUndoStack((prev) => [...prev, snapshot]);
+    setRedoStack([]);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const currentSnapshot: EditorHistorySnapshot = JSON.parse(JSON.stringify(currentStateRef.current));
+    const previousState = undoStack[undoStack.length - 1];
+
+    setUndoStack((prev) => prev.slice(0, prev.length - 1));
+    setRedoStack((prev) => [...prev, currentSnapshot]);
+
+    setVideoClips(previousState.videoClips || []);
+    setTextLayers(previousState.textLayers || []);
+    setOverlayLayers(previousState.overlayLayers || []);
+    setTotalDuration(previousState.totalDuration || 0);
+    setSelectedClipId(previousState.selectedClipId || null);
+    setSelectedTextLayerId(previousState.selectedTextLayerId || null);
+    setSelectedOverlayLayerId(previousState.selectedOverlayLayerId || null);
+    setCurrentTime(previousState.currentTime || 0);
+    setMusicTrack(previousState.musicTrack || null);
+
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ x: (previousState.currentTime || 0) * PIXELS_PER_MS, animated: false });
+    }
+  }, [undoStack, PIXELS_PER_MS]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const currentSnapshot: EditorHistorySnapshot = JSON.parse(JSON.stringify(currentStateRef.current));
+    const nextState = redoStack[redoStack.length - 1];
+
+    setRedoStack((prev) => prev.slice(0, prev.length - 1));
+    setUndoStack((prev) => [...prev, currentSnapshot]);
+
+    setVideoClips(nextState.videoClips || []);
+    setTextLayers(nextState.textLayers || []);
+    setOverlayLayers(nextState.overlayLayers || []);
+    setTotalDuration(nextState.totalDuration || 0);
+    setSelectedClipId(nextState.selectedClipId || null);
+    setSelectedTextLayerId(nextState.selectedTextLayerId || null);
+    setSelectedOverlayLayerId(nextState.selectedOverlayLayerId || null);
+    setCurrentTime(nextState.currentTime || 0);
+    setMusicTrack(nextState.musicTrack || null);
+
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ x: (nextState.currentTime || 0) * PIXELS_PER_MS, animated: false });
+    }
+  }, [redoStack, PIXELS_PER_MS]);
+
+  const handleAddOverlayLayer = (type: OverlayLayer['type']) => {
+    recordHistory();
     const newId = `overlay-${Date.now()}`;
-    const sampleSources: Record<OverlayType, string> = {
-      image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe",
+    const sampleSources: Record<string, string> = {
+      image: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675",
       video: "https://images.unsplash.com/photo-1536240478700-b869070f9279",
       gif: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853",
       sticker: "sticker-star",
@@ -221,12 +318,14 @@ export function EditorPage() {
   };
 
   const handleUpdateOverlayLayer = (id: string, updates: Partial<OverlayLayer>) => {
+    recordHistory();
     setOverlayLayers((prev) =>
       prev.map((layer) => (layer.id === id ? { ...layer, ...updates } : layer))
     );
   };
 
   const handleDeleteOverlayLayer = (id: string) => {
+    recordHistory();
     setOverlayLayers((prev) => prev.filter((l) => l.id !== id));
     if (selectedOverlayLayerId === id) {
       setSelectedOverlayLayerId(null);
@@ -234,6 +333,7 @@ export function EditorPage() {
   };
 
   const handleDuplicateOverlayLayer = (id: string) => {
+    recordHistory();
     const target = overlayLayers.find((l) => l.id === id);
     if (!target) return;
     const newId = `overlay-${Date.now()}`;
@@ -249,18 +349,21 @@ export function EditorPage() {
   };
 
   const handleBringForwardOverlay = (id: string) => {
+    recordHistory();
     setOverlayLayers((prev) =>
       prev.map((l) => (l.id === id ? { ...l, layerOrder: l.layerOrder + 1 } : l))
     );
   };
 
   const handleSendBackwardOverlay = (id: string) => {
+    recordHistory();
     setOverlayLayers((prev) =>
       prev.map((l) => (l.id === id ? { ...l, layerOrder: Math.max(1, l.layerOrder - 1) } : l))
     );
   };
 
   const handleAddTextLayer = () => {
+    recordHistory();
     const newId = `text-${Date.now()}`;
     const newLayer: TextLayer = {
       ...DEFAULT_TEXT_LAYER,
@@ -276,6 +379,7 @@ export function EditorPage() {
   };
 
   const handleUpdateTextLayer = (id: string, updates: Partial<TextLayer>) => {
+    recordHistory();
     setTextLayers((prev) =>
       prev.map((layer) => (layer.id === id ? { ...layer, ...updates } : layer))
     );
@@ -307,6 +411,7 @@ export function EditorPage() {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
+        recordHistory();
         setVideoClips((prev) => {
           const newClips = [...prev];
           let currentTotal = prev.length > 0 ? prev[prev.length - 1].endTime : 0;
@@ -356,6 +461,7 @@ export function EditorPage() {
   };
 
   const handleDeleteTextLayer = (id: string) => {
+    recordHistory();
     setTextLayers((prev) => prev.filter((l) => l.id !== id));
     if (selectedTextLayerId === id) {
       setSelectedTextLayerId(null);
@@ -363,6 +469,7 @@ export function EditorPage() {
   };
 
   const handleDuplicateTextLayer = (id: string) => {
+    recordHistory();
     const target = textLayers.find((l) => l.id === id);
     if (!target) return;
     const newId = `text-${Date.now()}`;
@@ -685,6 +792,7 @@ export function EditorPage() {
   }, [videoClips]);
 
   const handleSplitClip = () => {
+    recordHistory();
     const defaultClip: VideoClip = {
       id: "clip-1",
       startTime: 0,
@@ -700,34 +808,48 @@ export function EditorPage() {
     const clipsToUse = videoClips.length > 0 ? videoClips : [defaultClip];
 
     let targetClipIndex = clipsToUse.findIndex(
-      (c) => currentTime > c.startTime + 50 && currentTime < c.endTime - 50
+      (c) => currentTime > c.startTime + 10 && currentTime < c.endTime - 10
     );
 
-    if (targetClipIndex === -1 && currentTime > 50) {
+    if (targetClipIndex === -1) {
       targetClipIndex = clipsToUse.findIndex(
         (c) => currentTime >= c.startTime && currentTime <= c.endTime
       );
     }
 
-    if (targetClipIndex === -1 || currentTime <= 50) {
+    if (targetClipIndex === -1) {
       return;
     }
 
     const targetClip = clipsToUse[targetClipIndex];
     const splitTime = currentTime;
 
+    if (splitTime <= targetClip.startTime + 10 || splitTime >= targetClip.endTime - 10) {
+      return;
+    }
+
+    const timeIntoClip = splitTime - targetClip.startTime;
+    const targetTrimStart = targetClip.trimStartOffset || 0;
+    const targetTrimEnd = targetClip.trimEndOffset || targetClip.originalDuration || (targetClip.endTime - targetClip.startTime);
+    const splitMediaOffset = targetTrimStart + timeIntoClip;
+
+    const timestamp = Date.now();
     const clipA: VideoClip = {
       ...targetClip,
-      id: `${targetClip.id}-1`,
+      id: `${targetClip.id}-a-${timestamp}`,
       startTime: targetClip.startTime,
       endTime: splitTime,
+      trimStartOffset: targetTrimStart,
+      trimEndOffset: splitMediaOffset,
     };
 
     const clipB: VideoClip = {
       ...targetClip,
-      id: `${targetClip.id}-2`,
+      id: `${targetClip.id}-b-${timestamp}`,
       startTime: splitTime,
       endTime: targetClip.endTime,
+      trimStartOffset: splitMediaOffset,
+      trimEndOffset: targetTrimEnd,
     };
 
     const updatedClips = [
@@ -772,34 +894,46 @@ export function EditorPage() {
 
   const handleDoneTrim = () => {
     if (selectedClipId && videoClips.length > 0) {
+      recordHistory();
       setVideoClips((prev) => {
         let currentTotal = 0;
         return prev.map((clip) => {
-          let newTrimStartOffset = clip.trimStartOffset || 0;
-          let newTrimEndOffset = clip.trimEndOffset || clip.originalDuration || 5000;
-          
           if (clip.id === selectedClipId) {
             const deltaStart = draftTrimStart - clip.startTime;
             const deltaEnd = clip.endTime - draftTrimEnd;
-            newTrimStartOffset += deltaStart;
-            newTrimEndOffset -= deltaEnd;
+            const newTrimStartOffset = Math.max(0, (clip.trimStartOffset || 0) + deltaStart);
+            const origDur = clip.originalDuration || 5000;
+            const newTrimEndOffset = Math.min(origDur, Math.max(newTrimStartOffset + 500, (clip.trimEndOffset || origDur) - deltaEnd));
+            const dur = newTrimEndOffset - newTrimStartOffset;
+
+            const updatedClip = {
+              ...clip,
+              trimStartOffset: newTrimStartOffset,
+              trimEndOffset: newTrimEndOffset,
+              startTime: currentTotal,
+              endTime: currentTotal + dur,
+            };
+            currentTotal += dur;
+            return updatedClip;
+          } else {
+            const dur = (clip.trimEndOffset || clip.originalDuration || 5000) - (clip.trimStartOffset || 0);
+            const updatedClip = {
+              ...clip,
+              startTime: currentTotal,
+              endTime: currentTotal + dur,
+            };
+            currentTotal += dur;
+            return updatedClip;
           }
-          
-          const dur = newTrimEndOffset - newTrimStartOffset;
-          const updatedClip = {
-            ...clip,
-            trimStartOffset: newTrimStartOffset,
-            trimEndOffset: newTrimEndOffset,
-            startTime: currentTotal,
-            endTime: currentTotal + dur,
-          };
-          currentTotal += dur;
-          return updatedClip;
         });
       });
     }
     setTrimStart(draftTrimStart);
     setTrimEnd(draftTrimEnd);
+  };
+
+  const handleDoneTrimAndClose = () => {
+    handleDoneTrim();
     setSelectedTool(null);
   };
 
@@ -852,6 +986,7 @@ export function EditorPage() {
       },
       onPanResponderRelease: () => {
         setIsSnappingLeft(false);
+        handleDoneTrim();
       },
       onPanResponderTerminate: () => {
         setIsSnappingLeft(false);
@@ -891,6 +1026,7 @@ export function EditorPage() {
       },
       onPanResponderRelease: () => {
         setIsSnappingRight(false);
+        handleDoneTrim();
       },
       onPanResponderTerminate: () => {
         setIsSnappingRight(false);
@@ -1089,9 +1225,11 @@ export function EditorPage() {
     const tempOverlayOpacity = Math.min(0.4, Math.abs(tempVal) / 250);
     const tintOverlayOpacity = Math.min(0.4, Math.abs(tintVal) / 250);
 
+    const clipRotation = activePlaybackClip.clip?.rotation || 0;
+
     return (
       <View style={isPreviewFullscreen ? styles.fullscreenContainer : styles.previewContainer}>
-        <View style={styles.previewBox}>
+        <View style={[styles.previewBox, clipRotation !== 0 && { transform: [{ rotate: `${clipRotation}deg` }] }]}>
           {activePlaybackClip.clip && isImageUri(activePlaybackClip.clip.videoUri, activePlaybackClip.clip.mediaType) ? (
             <Image
               source={{ uri: activePlaybackClip.clip.videoUri }}
@@ -1285,11 +1423,21 @@ export function EditorPage() {
           <TouchableOpacity style={styles.rightActionBtn} activeOpacity={0.7}>
             <Ionicons name="options-outline" size={18} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.rightActionBtn} activeOpacity={0.7}>
-            <Ionicons name="arrow-undo-outline" size={18} color="#fff" />
+          <TouchableOpacity 
+            style={[styles.rightActionBtn, undoStack.length === 0 && { opacity: 0.35 }]} 
+            onPress={handleUndo}
+            disabled={undoStack.length === 0}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-undo-outline" size={18} color={undoStack.length > 0 ? "#fff" : "rgba(255,255,255,0.4)"} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.rightActionBtn} activeOpacity={0.7}>
-            <Ionicons name="arrow-redo-outline" size={18} color="#666666" />
+          <TouchableOpacity 
+            style={[styles.rightActionBtn, redoStack.length === 0 && { opacity: 0.35 }]} 
+            onPress={handleRedo}
+            disabled={redoStack.length === 0}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-redo-outline" size={18} color={redoStack.length > 0 ? "#fff" : "rgba(255,255,255,0.4)"} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1355,7 +1503,7 @@ export function EditorPage() {
             ref={scrollViewRef}
             horizontal 
             showsHorizontalScrollIndicator={false} 
-            contentContainerStyle={[styles.timelineScroll, { paddingLeft: 85, paddingRight: 300 }]}
+            contentContainerStyle={[styles.timelineScroll, { paddingLeft: 0, paddingRight: 300 }]}
             scrollEventThrottle={16}
             onScroll={(e) => {
               if (!isPlaying) {
@@ -1654,7 +1802,7 @@ export function EditorPage() {
             </View>
           </ScrollView>
 
-          <View style={[styles.playhead, { left: 85 }]}>
+          <View style={[styles.playhead, { left: 80 }]}>
             <View style={[styles.playheadLine, (isSnappingLeft || isSnappingRight) && styles.playheadLineSnapping]} />
             <View style={[styles.playheadHandle, (isSnappingLeft || isSnappingRight) && styles.playheadHandleSnapping]}>
               <View style={styles.playheadHandleInner} />
@@ -1671,7 +1819,7 @@ export function EditorPage() {
         <TrimToolbar
           durationMs={Math.max(0, draftTrimEnd - draftTrimStart)}
           onCancel={handleCancelTrim}
-          onDone={handleDoneTrim}
+          onDone={handleDoneTrimAndClose}
           formatTime={formatTime}
           bottomInset={insets.bottom}
         />
@@ -1793,6 +1941,34 @@ export function EditorPage() {
         <AudioPanel
           audio={selectedClip?.audio}
           onUpdateAudio={updateSelectedClipAudio}
+          onClose={() => setSelectedTool(null)}
+          bottomInset={insets.bottom}
+        />
+      );
+    }
+
+    if (selectedTool === "rotate") {
+      let currentRotation = 0;
+      let onUpdate = (deg: number) => updateSelectedClip({ rotation: deg });
+
+      if (selectedTextLayerId) {
+        const textLayer = textLayers.find((l) => l.id === selectedTextLayerId);
+        currentRotation = textLayer?.rotation || 0;
+        onUpdate = (deg: number) => handleUpdateTextLayer(selectedTextLayerId, { rotation: deg });
+      } else if (selectedOverlayLayerId) {
+        const overlayLayer = overlayLayers.find((l) => l.id === selectedOverlayLayerId);
+        currentRotation = overlayLayer?.rotation || 0;
+        onUpdate = (deg: number) => handleUpdateOverlayLayer(selectedOverlayLayerId, { rotation: deg });
+      } else if (selectedClip) {
+        currentRotation = selectedClip.rotation || 0;
+        onUpdate = (deg: number) => updateSelectedClip({ rotation: deg });
+      }
+
+      return (
+        <RotatePanel
+          rotation={currentRotation}
+          onUpdateRotation={onUpdate}
+          onCommitRotation={recordHistory}
           onClose={() => setSelectedTool(null)}
           bottomInset={insets.bottom}
         />

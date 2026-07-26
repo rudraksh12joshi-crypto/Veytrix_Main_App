@@ -129,6 +129,7 @@ export interface VideoClip {
   frameBlending: boolean;
   adjustments: ColorAdjustments;
   audio: AudioSettings;
+  rotation?: number;
   mediaType?: "video" | "image";
 }
 
