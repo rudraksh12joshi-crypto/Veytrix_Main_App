@@ -13,6 +13,7 @@ import { ColorAdjustments, DEFAULT_COLOR_ADJUSTMENTS } from "../types/editor.typ
 interface ColorPanelProps {
   adjustments?: ColorAdjustments;
   onUpdateAdjustments: (updates: Partial<ColorAdjustments>) => void;
+  onCommitAdjustments?: () => void;
   onReset: () => void;
   onClose: () => void;
   bottomInset?: number;
@@ -45,10 +46,12 @@ function ColorSlider({
   control,
   value,
   onChange,
+  onCommit,
 }: {
   control: SliderControl;
   value: number;
   onChange: (val: number) => void;
+  onCommit?: () => void;
 }) {
   const trackWidthRef = useRef(260);
 
@@ -75,6 +78,12 @@ function ColorSlider({
         );
         const newVal = Math.round(control.min + ratio * (control.max - control.min));
         onChange(newVal);
+      },
+      onPanResponderRelease: () => {
+        if (onCommit) onCommit();
+      },
+      onPanResponderTerminate: () => {
+        if (onCommit) onCommit();
       },
     })
   ).current;
@@ -131,6 +140,7 @@ function ColorSlider({
 export function ColorPanel({
   adjustments = DEFAULT_COLOR_ADJUSTMENTS,
   onUpdateAdjustments,
+  onCommitAdjustments,
   onReset,
   onClose,
   bottomInset = 20,
@@ -212,6 +222,7 @@ export function ColorPanel({
               control={control}
               value={adjustments[control.key] || 0}
               onChange={(val) => onUpdateAdjustments({ [control.key]: val })}
+              onCommit={onCommitAdjustments}
             />
           ))
         ) : (

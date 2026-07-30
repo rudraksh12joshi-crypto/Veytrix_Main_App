@@ -20,6 +20,7 @@ import { OverlayPanel } from "../panels/OverlayPanel";
 import { RotatePanel } from "../panels/RotatePanel";
 import { TextOverlay } from "../text/TextOverlay";
 import { OverlayOverlay } from "../overlay/OverlayOverlay";
+import { TransitionPanel, ClipTransition, TransitionType, TransitionPair } from "../panels/TransitionPanel";
 
 const { width } = Dimensions.get("window");
 
@@ -185,16 +186,21 @@ export function EditorPage() {
   // Compute timeline width from total project duration for helper tracks
   const projectTimelineWidth = useMemo(() => {
     if (videoClips.length > 0) {
-      const maxEnd = videoClips.reduce((max, clip) => {
-        const clipEnd = (clip.endTime / (clip.speed || 1.0));
-        return Math.max(max, clipEnd);
+      const totalMs = videoClips.reduce((sum, clip) => {
+        const dur = Math.max(100, clip.endTime - clip.startTime);
+        return sum + dur / (clip.speed || 1.0);
       }, 0);
-      return Math.max(maxEnd * PIXELS_PER_MS, 200);
+      const gapsPx = Math.max(0, videoClips.length - 1) * 28;
+      return Math.max(totalMs * PIXELS_PER_MS + gapsPx, 100);
     }
-    return totalDuration * PIXELS_PER_MS || 300;
-  }, [videoClips, totalDuration]);
+    return Math.max(totalDuration * PIXELS_PER_MS, 100);
+  }, [videoClips, totalDuration, PIXELS_PER_MS]);
 
 
+
+  // Transitions State
+  const [transitions, setTransitions] = useState<Record<string, ClipTransition>>({});
+  const [selectedTransitionPair, setSelectedTransitionPair] = useState<TransitionPair | null>(null);
 
   interface EditorHistorySnapshot {
     videoClips: VideoClip[];
@@ -206,10 +212,20 @@ export function EditorPage() {
     selectedOverlayLayerId: string | null;
     currentTime: number;
     musicTrack: MusicTrack | null;
+    transitions: Record<string, ClipTransition>;
   }
 
-  const [undoStack, setUndoStack] = useState<EditorHistorySnapshot[]>([]);
-  const [redoStack, setRedoStack] = useState<EditorHistorySnapshot[]>([]);
+  const [history, setHistory] = useState<EditorHistorySnapshot[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+
+  const historyRef = useRef<EditorHistorySnapshot[]>([]);
+  const historyIndexRef = useRef<number>(-1);
+  const isUndoingOrRedoingRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    historyRef.current = history;
+    historyIndexRef.current = historyIndex;
+  }, [history, historyIndex]);
 
   const currentStateRef = useRef<EditorHistorySnapshot>({
     videoClips: [],
@@ -221,6 +237,7 @@ export function EditorPage() {
     selectedOverlayLayerId: null,
     currentTime: 0,
     musicTrack: null,
+    transitions: {},
   });
 
   useEffect(() => {
@@ -234,22 +251,68 @@ export function EditorPage() {
       selectedOverlayLayerId,
       currentTime,
       musicTrack,
+      transitions,
     };
   });
 
-  const recordHistory = useCallback(() => {
-    const snapshot: EditorHistorySnapshot = JSON.parse(JSON.stringify(currentStateRef.current));
-    setUndoStack((prev) => [...prev, snapshot]);
-    setRedoStack([]);
+  const createSnapshot = useCallback((overrides?: Partial<EditorHistorySnapshot>): EditorHistorySnapshot => {
+    return JSON.parse(
+      JSON.stringify({
+        videoClips: overrides?.videoClips ?? currentStateRef.current.videoClips,
+        textLayers: overrides?.textLayers ?? currentStateRef.current.textLayers,
+        overlayLayers: overrides?.overlayLayers ?? currentStateRef.current.overlayLayers,
+        totalDuration: overrides?.totalDuration ?? currentStateRef.current.totalDuration,
+        selectedClipId: overrides?.selectedClipId !== undefined ? overrides.selectedClipId : currentStateRef.current.selectedClipId,
+        selectedTextLayerId: overrides?.selectedTextLayerId !== undefined ? overrides.selectedTextLayerId : currentStateRef.current.selectedTextLayerId,
+        selectedOverlayLayerId: overrides?.selectedOverlayLayerId !== undefined ? overrides.selectedOverlayLayerId : currentStateRef.current.selectedOverlayLayerId,
+        currentTime: overrides?.currentTime ?? currentStateRef.current.currentTime,
+        musicTrack: overrides?.musicTrack ?? currentStateRef.current.musicTrack,
+        transitions: overrides?.transitions ?? currentStateRef.current.transitions ?? {},
+      })
+    );
   }, []);
 
-  const handleUndo = useCallback(() => {
-    if (undoStack.length === 0) return;
-    const currentSnapshot: EditorHistorySnapshot = JSON.parse(JSON.stringify(currentStateRef.current));
-    const previousState = undoStack[undoStack.length - 1];
+  const recordHistory = useCallback((customSnapshot?: EditorHistorySnapshot) => {
+    if (isUndoingOrRedoingRef.current) return;
 
-    setUndoStack((prev) => prev.slice(0, prev.length - 1));
-    setRedoStack((prev) => [...prev, currentSnapshot]);
+    const snapshot: EditorHistorySnapshot = customSnapshot
+      ? JSON.parse(JSON.stringify(customSnapshot))
+      : createSnapshot();
+
+    const currentHist = historyRef.current;
+    const currentIdx = historyIndexRef.current;
+
+    const truncated = currentIdx >= 0 ? currentHist.slice(0, currentIdx + 1) : [];
+
+    if (truncated.length > 0) {
+      const lastSnap = truncated[truncated.length - 1];
+      if (JSON.stringify(lastSnap) === JSON.stringify(snapshot)) {
+        return;
+      }
+    }
+
+    const nextHistory = [...truncated, snapshot];
+    const nextIndex = nextHistory.length - 1;
+
+    historyRef.current = nextHistory;
+    historyIndexRef.current = nextIndex;
+
+    setHistory(nextHistory);
+    setHistoryIndex(nextIndex);
+  }, [createSnapshot]);
+
+  const handleUndo = useCallback(() => {
+    const currentIdx = historyIndexRef.current;
+    const currentHist = historyRef.current;
+
+    if (currentIdx <= 0 || currentHist.length === 0) return;
+
+    isUndoingOrRedoingRef.current = true;
+    const newIndex = currentIdx - 1;
+    const previousState = currentHist[newIndex];
+
+    historyIndexRef.current = newIndex;
+    setHistoryIndex(newIndex);
 
     setVideoClips(previousState.videoClips || []);
     setTextLayers(previousState.textLayers || []);
@@ -260,19 +323,29 @@ export function EditorPage() {
     setSelectedOverlayLayerId(previousState.selectedOverlayLayerId || null);
     setCurrentTime(previousState.currentTime || 0);
     setMusicTrack(previousState.musicTrack || null);
+    setTransitions(previousState.transitions || {});
 
     if (scrollViewRef.current) {
       scrollViewRef.current.scrollTo({ x: (previousState.currentTime || 0) * PIXELS_PER_MS, animated: false });
     }
-  }, [undoStack, PIXELS_PER_MS]);
+
+    setTimeout(() => {
+      isUndoingOrRedoingRef.current = false;
+    }, 50);
+  }, [PIXELS_PER_MS]);
 
   const handleRedo = useCallback(() => {
-    if (redoStack.length === 0) return;
-    const currentSnapshot: EditorHistorySnapshot = JSON.parse(JSON.stringify(currentStateRef.current));
-    const nextState = redoStack[redoStack.length - 1];
+    const currentIdx = historyIndexRef.current;
+    const currentHist = historyRef.current;
 
-    setRedoStack((prev) => prev.slice(0, prev.length - 1));
-    setUndoStack((prev) => [...prev, currentSnapshot]);
+    if (currentIdx < 0 || currentIdx >= currentHist.length - 1) return;
+
+    isUndoingOrRedoingRef.current = true;
+    const newIndex = currentIdx + 1;
+    const nextState = currentHist[newIndex];
+
+    historyIndexRef.current = newIndex;
+    setHistoryIndex(newIndex);
 
     setVideoClips(nextState.videoClips || []);
     setTextLayers(nextState.textLayers || []);
@@ -283,57 +356,123 @@ export function EditorPage() {
     setSelectedOverlayLayerId(nextState.selectedOverlayLayerId || null);
     setCurrentTime(nextState.currentTime || 0);
     setMusicTrack(nextState.musicTrack || null);
+    setTransitions(nextState.transitions || {});
 
     if (scrollViewRef.current) {
       scrollViewRef.current.scrollTo({ x: (nextState.currentTime || 0) * PIXELS_PER_MS, animated: false });
     }
-  }, [redoStack, PIXELS_PER_MS]);
 
-  const handleAddOverlayLayer = (type: OverlayLayer['type']) => {
-    recordHistory();
-    const newId = `overlay-${Date.now()}`;
-    const sampleSources: Record<string, string> = {
-      image: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675",
-      video: "https://images.unsplash.com/photo-1536240478700-b869070f9279",
-      gif: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853",
-      sticker: "sticker-star",
-      logo: "logo-veytrix",
-      watermark: "watermark-official",
+    setTimeout(() => {
+      isUndoingOrRedoingRef.current = false;
+    }, 50);
+  }, [PIXELS_PER_MS]);
+
+  const allTransitionPairs = useMemo<TransitionPair[]>(() => {
+    const pairs: TransitionPair[] = [];
+    for (let i = 0; i < videoClips.length - 1; i++) {
+      pairs.push({
+        fromId: videoClips[i].id,
+        toId: videoClips[i + 1].id,
+        fromIndex: i,
+        toIndex: i + 1,
+      });
+    }
+    return pairs;
+  }, [videoClips]);
+
+  const handleSelectTransition = (type: TransitionType) => {
+    const pair = selectedTransitionPair || allTransitionPairs[0];
+    if (!pair) return;
+    const pairKey = `${pair.fromId}_${pair.toId}`;
+    const nextTransitions = {
+      ...transitions,
+      [pairKey]: {
+        id: pairKey,
+        fromClipId: pair.fromId,
+        toClipId: pair.toId,
+        type,
+      },
     };
+    setTransitions(nextTransitions);
+    recordHistory(createSnapshot({ transitions: nextTransitions }));
+  };
+
+  const handleAddOverlayLayer = async (type: OverlayLayer['type']) => {
+    let sourceUri = "";
+    let finalType = type;
+
+    if (type === "image" || type === "video" || type === "gif") {
+      try {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.All,
+          allowsEditing: false,
+          quality: 1,
+        });
+
+        if (result.canceled || !result.assets || result.assets.length === 0) {
+          // User cancelled media picker selection — do not modify project or add empty overlay
+          return;
+        }
+
+        const asset = result.assets[0];
+        sourceUri = asset.uri;
+        finalType = asset.type === "video" ? "video" : type;
+      } catch (err) {
+        console.warn("Media picker error", err);
+      }
+    }
+
+    if (!sourceUri) {
+      const sampleSources: Record<string, string> = {
+        image: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675",
+        video: "https://images.unsplash.com/photo-1536240478700-b869070f9279",
+        gif: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853",
+        sticker: "sticker-star",
+        logo: "logo-veytrix",
+        watermark: "watermark-official",
+      };
+      sourceUri = sampleSources[type] || sampleSources.image;
+    }
+
+    const newId = `overlay-${Date.now()}`;
+    const startT = currentTime || 0;
+    const endT = Math.min(totalDuration > 0 ? totalDuration : 30000, startT + 5000);
 
     const newLayer: OverlayLayer = {
       ...DEFAULT_OVERLAY_LAYER,
       id: newId,
-      type,
-      source: sampleSources[type] || sampleSources.image,
-      name: `${type.toUpperCase()} Overlay`,
-      startTime: 0,
-      endTime: totalDuration > 0 ? totalDuration : 30000,
+      type: finalType,
+      source: sourceUri,
+      name: `${finalType.toUpperCase()} Overlay`,
+      startTime: startT,
+      endTime: Math.max(startT + 500, endT),
       layerOrder: overlayLayers.length + 1,
     };
 
-    setOverlayLayers((prev) => [...prev, newLayer]);
+    const nextLayers = [...overlayLayers, newLayer];
+    setOverlayLayers(nextLayers);
     setSelectedOverlayLayerId(newId);
     setSelectedTool("overlay");
+    recordHistory(createSnapshot({ overlayLayers: nextLayers, selectedOverlayLayerId: newId }));
   };
 
   const handleUpdateOverlayLayer = (id: string, updates: Partial<OverlayLayer>) => {
-    recordHistory();
-    setOverlayLayers((prev) =>
-      prev.map((layer) => (layer.id === id ? { ...layer, ...updates } : layer))
-    );
+    const nextLayers = overlayLayers.map((layer) => (layer.id === id ? { ...layer, ...updates } : layer));
+    setOverlayLayers(nextLayers);
+    recordHistory(createSnapshot({ overlayLayers: nextLayers }));
   };
 
   const handleDeleteOverlayLayer = (id: string) => {
-    recordHistory();
-    setOverlayLayers((prev) => prev.filter((l) => l.id !== id));
+    const nextLayers = overlayLayers.filter((l) => l.id !== id);
+    const nextSelId = selectedOverlayLayerId === id ? null : selectedOverlayLayerId;
+    setOverlayLayers(nextLayers);
     if (selectedOverlayLayerId === id) {
       setSelectedOverlayLayerId(null);
     }
+    recordHistory(createSnapshot({ overlayLayers: nextLayers, selectedOverlayLayerId: nextSelId }));
   };
 
   const handleDuplicateOverlayLayer = (id: string) => {
-    recordHistory();
     const target = overlayLayers.find((l) => l.id === id);
     if (!target) return;
     const newId = `overlay-${Date.now()}`;
@@ -344,26 +483,25 @@ export function EditorPage() {
       position: { x: Math.min(90, target.position.x + 5), y: Math.min(90, target.position.y + 5) },
       layerOrder: overlayLayers.length + 1,
     };
-    setOverlayLayers((prev) => [...prev, dupLayer]);
+    const nextLayers = [...overlayLayers, dupLayer];
+    setOverlayLayers(nextLayers);
     setSelectedOverlayLayerId(newId);
+    recordHistory(createSnapshot({ overlayLayers: nextLayers, selectedOverlayLayerId: newId }));
   };
 
   const handleBringForwardOverlay = (id: string) => {
-    recordHistory();
-    setOverlayLayers((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, layerOrder: l.layerOrder + 1 } : l))
-    );
+    const nextLayers = overlayLayers.map((l) => (l.id === id ? { ...l, layerOrder: l.layerOrder + 1 } : l));
+    setOverlayLayers(nextLayers);
+    recordHistory(createSnapshot({ overlayLayers: nextLayers }));
   };
 
   const handleSendBackwardOverlay = (id: string) => {
-    recordHistory();
-    setOverlayLayers((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, layerOrder: Math.max(1, l.layerOrder - 1) } : l))
-    );
+    const nextLayers = overlayLayers.map((l) => (l.id === id ? { ...l, layerOrder: Math.max(1, l.layerOrder - 1) } : l));
+    setOverlayLayers(nextLayers);
+    recordHistory(createSnapshot({ overlayLayers: nextLayers }));
   };
 
   const handleAddTextLayer = () => {
-    recordHistory();
     const newId = `text-${Date.now()}`;
     const newLayer: TextLayer = {
       ...DEFAULT_TEXT_LAYER,
@@ -373,16 +511,17 @@ export function EditorPage() {
       endTime: totalDuration > 0 ? totalDuration : 30000,
       layerOrder: textLayers.length + 1,
     };
-    setTextLayers((prev) => [...prev, newLayer]);
+    const nextLayers = [...textLayers, newLayer];
+    setTextLayers(nextLayers);
     setSelectedTextLayerId(newId);
     setSelectedTool("text");
+    recordHistory(createSnapshot({ textLayers: nextLayers, selectedTextLayerId: newId }));
   };
 
   const handleUpdateTextLayer = (id: string, updates: Partial<TextLayer>) => {
-    recordHistory();
-    setTextLayers((prev) =>
-      prev.map((layer) => (layer.id === id ? { ...layer, ...updates } : layer))
-    );
+    const nextLayers = textLayers.map((layer) => (layer.id === id ? { ...layer, ...updates } : layer));
+    setTextLayers(nextLayers);
+    recordHistory(createSnapshot({ textLayers: nextLayers }));
   };
 
   const isImageUri = (uri?: string, mediaType?: string) => {
@@ -411,49 +550,47 @@ export function EditorPage() {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        recordHistory();
-        setVideoClips((prev) => {
-          const newClips = [...prev];
-          let currentTotal = prev.length > 0 ? prev[prev.length - 1].endTime : 0;
-          let newlySelectedId = "";
+        const newClips = [...videoClips];
+        let currentTotal = videoClips.length > 0 ? videoClips[videoClips.length - 1].endTime : 0;
+        let newlySelectedId = "";
 
-          result.assets.forEach((asset, idx) => {
-            const isImg = asset.type === 'image' || isImageUri(asset.uri, asset.type ?? undefined);
-            const dur = isImg ? 5000 : (asset.duration || 5000);
-            const clipDur = parseInt(dur.toString());
-            const startTime = currentTotal;
-            const endTime = currentTotal + clipDur;
-            currentTotal = endTime;
-            
-            const newId = `clip-${Date.now()}-${idx}`;
-            if (idx === 0) newlySelectedId = newId;
-
-            newClips.push({
-              id: newId,
-              videoUri: asset.uri,
-              thumbnailUri: asset.uri,
-              originalDuration: clipDur,
-              trimStartOffset: 0,
-              trimEndOffset: clipDur,
-              startTime,
-              endTime,
-              speed: 1.0,
-              reverse: false,
-              maintainPitch: true,
-              motionBlur: false,
-              frameBlending: false,
-              adjustments: { ...DEFAULT_COLOR_ADJUSTMENTS },
-              audio: { ...DEFAULT_AUDIO_SETTINGS },
-              mediaType: isImg ? 'image' : 'video',
-            });
-          });
+        result.assets.forEach((asset, idx) => {
+          const isImg = asset.type === 'image' || isImageUri(asset.uri, asset.type ?? undefined);
+          const dur = isImg ? 5000 : (asset.duration || 5000);
+          const clipDur = parseInt(dur.toString());
+          const startTime = currentTotal;
+          const endTime = currentTotal + clipDur;
+          currentTotal = endTime;
           
-          setTotalDuration(currentTotal);
-          if (newlySelectedId) {
-            setSelectedClipId(newlySelectedId);
-          }
-          return newClips;
+          const newId = `clip-${Date.now()}-${idx}`;
+          if (idx === 0) newlySelectedId = newId;
+
+          newClips.push({
+            id: newId,
+            videoUri: asset.uri,
+            thumbnailUri: asset.uri,
+            originalDuration: clipDur,
+            trimStartOffset: 0,
+            trimEndOffset: clipDur,
+            startTime,
+            endTime,
+            speed: 1.0,
+            reverse: false,
+            maintainPitch: true,
+            motionBlur: false,
+            frameBlending: false,
+            adjustments: { ...DEFAULT_COLOR_ADJUSTMENTS },
+            audio: { ...DEFAULT_AUDIO_SETTINGS },
+            mediaType: isImg ? 'image' : 'video',
+          });
         });
+        
+        setVideoClips(newClips);
+        setTotalDuration(currentTotal);
+        if (newlySelectedId) {
+          setSelectedClipId(newlySelectedId);
+        }
+        recordHistory(createSnapshot({ videoClips: newClips, totalDuration: currentTotal, selectedClipId: newlySelectedId || selectedClipId }));
       }
     } catch (e) {
       console.log("Error launching image picker:", e);
@@ -461,15 +598,16 @@ export function EditorPage() {
   };
 
   const handleDeleteTextLayer = (id: string) => {
-    recordHistory();
-    setTextLayers((prev) => prev.filter((l) => l.id !== id));
+    const nextLayers = textLayers.filter((l) => l.id !== id);
+    const nextSelId = selectedTextLayerId === id ? null : selectedTextLayerId;
+    setTextLayers(nextLayers);
     if (selectedTextLayerId === id) {
       setSelectedTextLayerId(null);
     }
+    recordHistory(createSnapshot({ textLayers: nextLayers, selectedTextLayerId: nextSelId }));
   };
 
   const handleDuplicateTextLayer = (id: string) => {
-    recordHistory();
     const target = textLayers.find((l) => l.id === id);
     if (!target) return;
     const newId = `text-${Date.now()}`;
@@ -480,8 +618,10 @@ export function EditorPage() {
       position: { x: Math.min(90, target.position.x + 5), y: Math.min(90, target.position.y + 5) },
       layerOrder: textLayers.length + 1,
     };
-    setTextLayers((prev) => [...prev, dupLayer]);
+    const nextLayers = [...textLayers, dupLayer];
+    setTextLayers(nextLayers);
     setSelectedTextLayerId(newId);
+    recordHistory(createSnapshot({ textLayers: nextLayers, selectedTextLayerId: newId }));
   };
 
   const selectedClip = useMemo(() => {
@@ -699,8 +839,23 @@ export function EditorPage() {
       }
     }
 
-    if (status.durationMillis && totDur === 0 && clips.length === 1) {
-      setTotalDuration(status.durationMillis);
+    if (status.durationMillis && clips.length === 1) {
+      const realDur = status.durationMillis;
+      const currentClip = clips[0];
+      if (currentClip && (currentClip.endTime !== realDur || totDur !== realDur)) {
+        setTotalDuration(realDur);
+        setVideoClips((prev) => {
+          if (prev.length === 1 && (prev[0].endTime !== realDur || prev[0].originalDuration !== realDur)) {
+            return [{
+              ...prev[0],
+              originalDuration: realDur,
+              trimEndOffset: realDur,
+              endTime: realDur,
+            }];
+          }
+          return prev;
+        });
+      }
     }
   }, []);
 
@@ -713,7 +868,7 @@ export function EditorPage() {
   }, []);
 
   useEffect(() => {
-    if (videoClips.length === 0) {
+    if (videoClips.length === 0 && historyRef.current.length === 0) {
       let initialClips: VideoClip[] = [];
       let totalDur = 0;
 
@@ -779,6 +934,26 @@ export function EditorPage() {
         setTrimEnd(initialClips[0].endTime);
         setDraftTrimEnd(initialClips[0].endTime);
       }
+
+      if (historyRef.current.length === 0) {
+        const initialSnapshot: EditorHistorySnapshot = JSON.parse(
+          JSON.stringify({
+            videoClips: initialClips,
+            textLayers: [],
+            overlayLayers: [],
+            totalDuration: totalDur,
+            selectedClipId: initialClips[0]?.id || null,
+            selectedTextLayerId: null,
+            selectedOverlayLayerId: null,
+            currentTime: 0,
+            musicTrack: null,
+          })
+        );
+        historyRef.current = [initialSnapshot];
+        historyIndexRef.current = 0;
+        setHistory([initialSnapshot]);
+        setHistoryIndex(0);
+      }
     }
   }, [videosData, totalDuration, duration, videoUri, videoClips.length, trimEnd]);
 
@@ -792,7 +967,6 @@ export function EditorPage() {
   }, [videoClips]);
 
   const handleSplitClip = () => {
-    recordHistory();
     const defaultClip: VideoClip = {
       id: "clip-1",
       startTime: 0,
@@ -861,6 +1035,7 @@ export function EditorPage() {
 
     setVideoClips(updatedClips);
     setSelectedClipId(clipB.id);
+    recordHistory(createSnapshot({ videoClips: updatedClips, selectedClipId: clipB.id }));
   };
 
   const handleSelectTool = (toolId: string) => {
@@ -870,9 +1045,6 @@ export function EditorPage() {
       handleAddOverlayLayer("sticker");
       setSelectedTool("overlay");
     } else if (toolId === "overlay") {
-      if (overlayLayers.length === 0) {
-        handleAddOverlayLayer("image");
-      }
       setSelectedTool("overlay");
     } else if (toolId === "trim") {
       const activeClip = videoClips.find((c) => c.id === selectedClipId) || videoClips[0];
@@ -894,39 +1066,39 @@ export function EditorPage() {
 
   const handleDoneTrim = () => {
     if (selectedClipId && videoClips.length > 0) {
-      recordHistory();
-      setVideoClips((prev) => {
-        let currentTotal = 0;
-        return prev.map((clip) => {
-          if (clip.id === selectedClipId) {
-            const deltaStart = draftTrimStart - clip.startTime;
-            const deltaEnd = clip.endTime - draftTrimEnd;
-            const newTrimStartOffset = Math.max(0, (clip.trimStartOffset || 0) + deltaStart);
-            const origDur = clip.originalDuration || 5000;
-            const newTrimEndOffset = Math.min(origDur, Math.max(newTrimStartOffset + 500, (clip.trimEndOffset || origDur) - deltaEnd));
-            const dur = newTrimEndOffset - newTrimStartOffset;
+      let currentTotal = 0;
+      const updatedClips = videoClips.map((clip) => {
+        if (clip.id === selectedClipId) {
+          const deltaStart = draftTrimStart - clip.startTime;
+          const deltaEnd = clip.endTime - draftTrimEnd;
+          const newTrimStartOffset = Math.max(0, (clip.trimStartOffset || 0) + deltaStart);
+          const origDur = clip.originalDuration || 5000;
+          const newTrimEndOffset = Math.min(origDur, Math.max(newTrimStartOffset + 500, (clip.trimEndOffset || origDur) - deltaEnd));
+          const dur = newTrimEndOffset - newTrimStartOffset;
 
-            const updatedClip = {
-              ...clip,
-              trimStartOffset: newTrimStartOffset,
-              trimEndOffset: newTrimEndOffset,
-              startTime: currentTotal,
-              endTime: currentTotal + dur,
-            };
-            currentTotal += dur;
-            return updatedClip;
-          } else {
-            const dur = (clip.trimEndOffset || clip.originalDuration || 5000) - (clip.trimStartOffset || 0);
-            const updatedClip = {
-              ...clip,
-              startTime: currentTotal,
-              endTime: currentTotal + dur,
-            };
-            currentTotal += dur;
-            return updatedClip;
-          }
-        });
+          const updatedClip = {
+            ...clip,
+            trimStartOffset: newTrimStartOffset,
+            trimEndOffset: newTrimEndOffset,
+            startTime: currentTotal,
+            endTime: currentTotal + dur,
+          };
+          currentTotal += dur;
+          return updatedClip;
+        } else {
+          const dur = (clip.trimEndOffset || clip.originalDuration || 5000) - (clip.trimStartOffset || 0);
+          const updatedClip = {
+            ...clip,
+            startTime: currentTotal,
+            endTime: currentTotal + dur,
+          };
+          currentTotal += dur;
+          return updatedClip;
+        }
       });
+      setVideoClips(updatedClips);
+      setTotalDuration(currentTotal);
+      recordHistory(createSnapshot({ videoClips: updatedClips, totalDuration: currentTotal }));
     }
     setTrimStart(draftTrimStart);
     setTrimEnd(draftTrimEnd);
@@ -1423,22 +1595,30 @@ export function EditorPage() {
           <TouchableOpacity style={styles.rightActionBtn} activeOpacity={0.7}>
             <Ionicons name="options-outline" size={18} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.rightActionBtn, undoStack.length === 0 && { opacity: 0.35 }]} 
-            onPress={handleUndo}
-            disabled={undoStack.length === 0}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-undo-outline" size={18} color={undoStack.length > 0 ? "#fff" : "rgba(255,255,255,0.4)"} />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.rightActionBtn, redoStack.length === 0 && { opacity: 0.35 }]} 
-            onPress={handleRedo}
-            disabled={redoStack.length === 0}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-redo-outline" size={18} color={redoStack.length > 0 ? "#fff" : "rgba(255,255,255,0.4)"} />
-          </TouchableOpacity>
+          {(() => {
+            const canUndo = historyIndex > 0;
+            const canRedo = historyIndex >= 0 && historyIndex < history.length - 1;
+            return (
+              <>
+                <TouchableOpacity 
+                  style={[styles.rightActionBtn, !canUndo && { opacity: 0.35 }]} 
+                  onPress={handleUndo}
+                  disabled={!canUndo}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-undo-outline" size={18} color={canUndo ? "#fff" : "rgba(255,255,255,0.4)"} />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.rightActionBtn, !canRedo && { opacity: 0.35 }]} 
+                  onPress={handleRedo}
+                  disabled={!canRedo}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-redo-outline" size={18} color={canRedo ? "#fff" : "rgba(255,255,255,0.4)"} />
+                </TouchableOpacity>
+              </>
+            );
+          })()}
         </View>
       </View>
         )}
@@ -1502,6 +1682,7 @@ export function EditorPage() {
           <ScrollView 
             ref={scrollViewRef}
             horizontal 
+            scrollEnabled={!isTrimMode}
             showsHorizontalScrollIndicator={false} 
             contentContainerStyle={[styles.timelineScroll, { paddingLeft: 0, paddingRight: 300 }]}
             scrollEventThrottle={16}
@@ -1535,7 +1716,7 @@ export function EditorPage() {
                         <View style={[
                           styles.vnClip, 
                           { 
-                            width: Math.max(10, musicTrack.duration * PIXELS_PER_MS) || 200, 
+                            width: Math.min(Math.max(10, musicTrack.duration * PIXELS_PER_MS), projectTimelineWidth), 
                             backgroundColor: "#3A2E7A", 
                             borderColor: selectedTimelineClip === "music" ? "#fff" : "transparent",
                             borderWidth: selectedTimelineClip === "music" ? 2 : 0,
@@ -1683,69 +1864,103 @@ export function EditorPage() {
                         const widthPx = clipDuration * PIXELS_PER_MS;
                         const clipOffset = activeStart * PIXELS_PER_MS;
 
+                        const hasNextClip = idx < videoClips.length - 1;
+                        const nextClip = hasNextClip ? videoClips[idx + 1] : null;
+                        const pairKey = nextClip ? `${clip.id}_${nextClip.id}` : "";
+                        const currentTransition = pairKey ? transitions[pairKey] : null;
+                        const isTransitionActive = Boolean(currentTransition && currentTransition.type !== "none");
+
                         return (
-                          <TouchableOpacity
-                            key={clip.id}
-                            activeOpacity={0.9}
-                            onPress={() => setSelectedClipId(clip.id)}
-                            style={[
-                              styles.vnVideoClip,
-                              {
-                                width: widthPx,
-                                borderWidth: isTrimMode && isSelected ? 2 : isSelected ? 1.5 : 0,
-                                borderColor: isTrimMode && isSelected ? "#FFCC00" : isSelected ? "#fff" : "transparent",
-                              },
-                            ]}
-                          >
-                            <View style={[styles.vnThumbnails, { marginLeft: -(clip.trimStartOffset || 0) * PIXELS_PER_MS }]}>
-                              {[...Array(Math.max(1, Math.ceil(((clip.originalDuration || 5000) * PIXELS_PER_MS) / THUMBNAIL_WIDTH)))].map((_, i) => (
-                                <Image
-                                  key={i}
-                                  source={{ uri: clip.thumbnailUri || clip.videoUri || videoUri || "https://images.unsplash.com/photo-1517404215738-15263e9f9178" }}
-                                  style={styles.vnThumb}
-                                />
-                              ))}
-                            </View>
-                            
-                            {!isTrimMode && isSelected && <View style={styles.vnYellowBorder} />}
-                            {idx < videoClips.length - 1 && <View style={styles.splitSeamLine} />}
+                          <React.Fragment key={clip.id}>
+                            <TouchableOpacity
+                              activeOpacity={0.9}
+                              onPress={() => setSelectedClipId(clip.id)}
+                              style={[
+                                styles.vnVideoClip,
+                                {
+                                  width: widthPx,
+                                  borderWidth: isTrimMode && isSelected ? 2 : isSelected ? 1.5 : 0,
+                                  borderColor: isTrimMode && isSelected ? "#FFCC00" : isSelected ? "#fff" : "transparent",
+                                },
+                              ]}
+                            >
+                              <View style={[styles.vnThumbnails, { marginLeft: -(clip.trimStartOffset || 0) * PIXELS_PER_MS }]}>
+                                {[...Array(Math.max(1, Math.ceil(((clip.originalDuration || 5000) * PIXELS_PER_MS) / THUMBNAIL_WIDTH)))].map((_, i) => (
+                                  <Image
+                                    key={i}
+                                    source={{ uri: clip.thumbnailUri || clip.videoUri || videoUri || "https://images.unsplash.com/photo-1517404215738-15263e9f9178" }}
+                                    style={styles.vnThumb}
+                                  />
+                                ))}
+                              </View>
+                              
+                              {!isTrimMode && isSelected && <View style={styles.vnYellowBorder} />}
 
-                            {isTrimMode && isSelected && (
-                              <>
-                                {/* Left Trim Handle */}
-                                <View 
-                                  {...leftPanResponder.panHandlers}
-                                  style={[
-                                    styles.trimHandle, 
-                                    styles.trimHandleLeft,
-                                    isSnappingLeft && styles.trimHandleSnapping
-                                  ]}
-                                >
-                                  <View style={styles.trimHandleGrip} />
-                                  <View style={styles.trimHandleGrip} />
-                                </View>
+                              {isTrimMode && isSelected && (
+                                <>
+                                  {/* Left Trim Handle */}
+                                  <View 
+                                    {...leftPanResponder.panHandlers}
+                                    style={[
+                                      styles.trimHandle, 
+                                      styles.trimHandleLeft,
+                                      isSnappingLeft && styles.trimHandleSnapping
+                                    ]}
+                                  >
+                                    <View style={styles.trimHandleGrip} />
+                                    <View style={styles.trimHandleGrip} />
+                                  </View>
 
-                                {/* Right Trim Handle */}
-                                <View 
-                                  {...rightPanResponder.panHandlers}
+                                  {/* Right Trim Handle */}
+                                  <View 
+                                    {...rightPanResponder.panHandlers}
+                                    style={[
+                                      styles.trimHandle, 
+                                      styles.trimHandleRight,
+                                      isSnappingRight && styles.trimHandleSnapping
+                                    ]}
+                                  >
+                                    <View style={styles.trimHandleGrip} />
+                                    <View style={styles.trimHandleGrip} />
+                                  </View>
+                                </>
+                              )}
+
+                              <View style={styles.vnClipTime}>
+                                <Text style={styles.vnClipTimeText}>
+                                  {formatTime(clipDuration)} {clip.speed && clip.speed !== 1 ? `(${clip.speed}x)` : ''}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+
+                            {/* Transition Gap Placeholder & Centered [+] Button between Adjacent Clips */}
+                            {hasNextClip && nextClip && (
+                              <View style={styles.transitionGapContainer}>
+                                <TouchableOpacity
+                                  activeOpacity={0.8}
                                   style={[
-                                    styles.trimHandle, 
-                                    styles.trimHandleRight,
-                                    isSnappingRight && styles.trimHandleSnapping
+                                    styles.transitionBtn,
+                                    isTransitionActive && styles.transitionBtnActive,
                                   ]}
+                                  onPress={() => {
+                                    setSelectedTransitionPair({
+                                      fromId: clip.id,
+                                      toId: nextClip.id,
+                                      fromIndex: idx,
+                                      toIndex: idx + 1,
+                                    });
+                                    setSelectedTool("transitions");
+                                  }}
                                 >
-                                  <View style={styles.trimHandleGrip} />
-                                  <View style={styles.trimHandleGrip} />
-                                </View>
-                              </>
+                                  {isTransitionActive ? (
+                                    <Ionicons name="swap-horizontal" size={12} color="#000" />
+                                  ) : (
+                                    <Ionicons name="add" size={14} color="#fff" />
+                                  )}
+                                </TouchableOpacity>
+                              </View>
                             )}
-
-                            <View style={styles.vnClipTime}>
-                              <Text style={styles.vnClipTimeText}>
-                                {formatTime(clipDuration)} {clip.speed && clip.speed !== 1 ? `(${clip.speed}x)` : ''}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
+                          </React.Fragment>
                         );
                       })
                     ) : (
@@ -1784,14 +1999,36 @@ export function EditorPage() {
                     </TouchableOpacity>
                   </View>
                   
-                  <View style={[styles.vnTrack, { height: 24 }, isTrimMode && { opacity: 0.35 }]}>
-                    <View style={[styles.vnWaveformMock, { width: totalDuration * PIXELS_PER_MS || 300 }]}>
-                      <View style={styles.vnWaveformShape} />
-                    </View>
+                  {/* Embedded Video Audio Waveform Track - Directly Derived 1-to-1 from Video Clips */}
+                  <View style={[styles.vnTrack, { height: 24, flexDirection: 'row' }, isTrimMode && { opacity: 0.35 }]}>
+                    {videoClips.length > 0 ? (
+                      videoClips.map((clip, idx) => {
+                        const isSelected = clip.id === selectedClipId;
+                        const activeStart = isTrimMode && isSelected ? draftTrimStart : clip.startTime;
+                        const activeEnd = isTrimMode && isSelected ? draftTrimEnd : clip.endTime;
+                        const rawDuration = Math.max(100, activeEnd - activeStart);
+                        const clipDuration = rawDuration / (clip.speed || 1.0);
+                        const widthPx = clipDuration * PIXELS_PER_MS;
+                        const hasNextClip = idx < videoClips.length - 1;
+
+                        return (
+                          <React.Fragment key={`audio-${clip.id}`}>
+                            <View style={[styles.vnWaveformMock, { width: widthPx, height: 24 }]}>
+                              <View style={styles.vnWaveformShape} />
+                            </View>
+                            {hasNextClip && <View style={{ width: 28, height: 24 }} />}
+                          </React.Fragment>
+                        );
+                      })
+                    ) : (
+                      <View style={[styles.vnWaveformMock, { width: projectTimelineWidth }]}>
+                        <View style={styles.vnWaveformShape} />
+                      </View>
+                    )}
                   </View>
 
                   <View style={styles.vnRuler}>
-                    {[...Array(Math.max(1, Math.ceil(totalDuration / 1000) + 1))].map((_, i) => (
+                    {[...Array(Math.max(1, Math.ceil((projectTimelineWidth / PIXELS_PER_MS) / 1000) + 1))].map((_, i) => (
                       <View key={i} style={[styles.vnRulerMark, { width: 1000 * PIXELS_PER_MS }]}>
                         <Text style={styles.vnRulerText}>{formatTime(i * 1000)}</Text>
                         <View style={styles.vnRulerDot} />
@@ -1918,7 +2155,11 @@ export function EditorPage() {
         <ColorPanel
           adjustments={selectedClip?.adjustments}
           onUpdateAdjustments={updateSelectedClipAdjustments}
-          onReset={resetSelectedClipAdjustments}
+          onCommitAdjustments={() => recordHistory()}
+          onReset={() => {
+            resetSelectedClipAdjustments();
+            recordHistory();
+          }}
           onClose={() => setSelectedTool(null)}
           bottomInset={insets.bottom}
         />
@@ -1930,6 +2171,7 @@ export function EditorPage() {
         <SpeedPanel
           selectedClip={selectedClip}
           onUpdateClip={updateSelectedClip}
+          onCommitSpeed={() => recordHistory()}
           onClose={() => setSelectedTool(null)}
           bottomInset={insets.bottom}
         />
@@ -1941,6 +2183,7 @@ export function EditorPage() {
         <AudioPanel
           audio={selectedClip?.audio}
           onUpdateAudio={updateSelectedClipAudio}
+          onCommitAudio={() => recordHistory()}
           onClose={() => setSelectedTool(null)}
           bottomInset={insets.bottom}
         />
@@ -1968,8 +2211,30 @@ export function EditorPage() {
         <RotatePanel
           rotation={currentRotation}
           onUpdateRotation={onUpdate}
-          onCommitRotation={recordHistory}
+          onCommitRotation={() => recordHistory()}
           onClose={() => setSelectedTool(null)}
+          bottomInset={insets.bottom}
+        />
+      );
+    }
+
+    if (selectedTool === "transitions") {
+      const activePairObj = selectedTransitionPair || allTransitionPairs[0] || null;
+      const pairKey = activePairObj ? `${activePairObj.fromId}_${activePairObj.toId}` : "";
+      const activeTrans = pairKey && transitions[pairKey] ? transitions[pairKey].type : "none";
+
+      return (
+        <TransitionPanel
+          activePair={activePairObj}
+          allPairs={allTransitionPairs}
+          clips={videoClips}
+          activeTransitionType={activeTrans}
+          onSelectPair={(pair) => setSelectedTransitionPair(pair)}
+          onSelectTransition={handleSelectTransition}
+          onClose={() => {
+            setSelectedTool(null);
+            setSelectedTransitionPair(null);
+          }}
           bottomInset={insets.bottom}
         />
       );
@@ -2826,6 +3091,34 @@ const styles = StyleSheet.create({
   panelContent: {
     minHeight: 80,
     justifyContent: "center",
+  },
+  transitionGapContainer: {
+    width: 28,
+    height: 60,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0D0D0F",
+    marginHorizontal: 0,
+    zIndex: 5,
+  },
+  transitionBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#2A2A35",
+    borderWidth: 1.5,
+    borderColor: "#666",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  transitionBtnActive: {
+    backgroundColor: "#FFCC00",
+    borderColor: "#FFCC00",
   },
 });
 

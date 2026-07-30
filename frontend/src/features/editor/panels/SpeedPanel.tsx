@@ -13,6 +13,7 @@ import { VideoClip } from "../types/editor.types";
 interface SpeedPanelProps {
   selectedClip?: VideoClip | null;
   onUpdateClip: (updates: Partial<VideoClip>) => void;
+  onCommitSpeed?: () => void;
   onClose: () => void;
   bottomInset?: number;
 }
@@ -22,6 +23,7 @@ const PRESETS = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0];
 export function SpeedPanel({
   selectedClip,
   onUpdateClip,
+  onCommitSpeed,
   onClose,
   bottomInset = 20,
 }: SpeedPanelProps) {
@@ -48,6 +50,12 @@ export function SpeedPanel({
         const newSpeed = parseFloat((0.25 + ratio * (5.0 - 0.25)).toFixed(2));
         onUpdateClip({ speed: newSpeed });
       },
+      onPanResponderRelease: () => {
+        if (onCommitSpeed) onCommitSpeed();
+      },
+      onPanResponderTerminate: () => {
+        if (onCommitSpeed) onCommitSpeed();
+      },
     })
   ).current;
 
@@ -73,7 +81,10 @@ export function SpeedPanel({
             <TouchableOpacity
               key={p}
               style={[styles.presetChip, Math.abs(currentSpeed - p) < 0.05 && styles.presetChipActive]}
-              onPress={() => onUpdateClip({ speed: p })}
+              onPress={() => {
+                onUpdateClip({ speed: p });
+                if (onCommitSpeed) onCommitSpeed();
+              }}
               activeOpacity={0.7}
             >
               <Text style={[styles.presetChipText, Math.abs(currentSpeed - p) < 0.05 && styles.presetChipTextActive]}>
@@ -106,7 +117,10 @@ export function SpeedPanel({
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.optionsRow}>
           <TouchableOpacity
             style={[styles.optionRow, selectedClip?.reverse && styles.optionRowActive]}
-            onPress={() => onUpdateClip({ reverse: !selectedClip?.reverse })}
+            onPress={() => {
+              onUpdateClip({ reverse: !selectedClip?.reverse });
+              if (onCommitSpeed) onCommitSpeed();
+            }}
             activeOpacity={0.8}
           >
             <Ionicons name="swap-horizontal" size={16} color={selectedClip?.reverse ? "#00E5FF" : "#8E8E93"} />
@@ -115,7 +129,10 @@ export function SpeedPanel({
 
           <TouchableOpacity
             style={[styles.optionRow, selectedClip?.maintainPitch && styles.optionRowActive]}
-            onPress={() => onUpdateClip({ maintainPitch: !selectedClip?.maintainPitch })}
+            onPress={() => {
+              onUpdateClip({ maintainPitch: !selectedClip?.maintainPitch });
+              if (onCommitSpeed) onCommitSpeed();
+            }}
             activeOpacity={0.8}
           >
             <Ionicons name="musical-notes" size={16} color={selectedClip?.maintainPitch ? "#00E5FF" : "#8E8E93"} />
@@ -124,7 +141,10 @@ export function SpeedPanel({
 
           <TouchableOpacity
             style={[styles.optionRow, selectedClip?.motionBlur && styles.optionRowActive]}
-            onPress={() => onUpdateClip({ motionBlur: !selectedClip?.motionBlur })}
+            onPress={() => {
+              onUpdateClip({ motionBlur: !selectedClip?.motionBlur });
+              if (onCommitSpeed) onCommitSpeed();
+            }}
             activeOpacity={0.8}
           >
             <Ionicons name="sparkles-outline" size={16} color={selectedClip?.motionBlur ? "#00E5FF" : "#8E8E93"} />
@@ -133,7 +153,10 @@ export function SpeedPanel({
 
           <TouchableOpacity
             style={[styles.optionRow, selectedClip?.frameBlending && styles.optionRowActive]}
-            onPress={() => onUpdateClip({ frameBlending: !selectedClip?.frameBlending })}
+            onPress={() => {
+              onUpdateClip({ frameBlending: !selectedClip?.frameBlending });
+              if (onCommitSpeed) onCommitSpeed();
+            }}
             activeOpacity={0.8}
           >
             <Ionicons name="layers-outline" size={16} color={selectedClip?.frameBlending ? "#00E5FF" : "#8E8E93"} />

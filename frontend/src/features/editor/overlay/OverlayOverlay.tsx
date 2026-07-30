@@ -54,7 +54,13 @@ function DraggableOverlayItem({
     })
   ).current;
 
-  const isUri = layer.source.startsWith("http") || layer.source.startsWith("file") || layer.source.startsWith("data:");
+  const isUri =
+    layer.source.startsWith("http") ||
+    layer.source.startsWith("file") ||
+    layer.source.startsWith("content") ||
+    layer.source.startsWith("ph") ||
+    layer.source.startsWith("data:") ||
+    layer.source.includes("/");
 
   return (
     <View

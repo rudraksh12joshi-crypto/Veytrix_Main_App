@@ -17,6 +17,7 @@ import {
 interface AudioPanelProps {
   audio?: AudioSettings;
   onUpdateAudio: (updates: Partial<AudioSettings>) => void;
+  onCommitAudio?: () => void;
   onClose: () => void;
   bottomInset?: number;
 }
@@ -30,6 +31,7 @@ interface SliderItemProps {
   step?: number;
   icon?: string;
   onChange: (val: number) => void;
+  onCommit?: () => void;
 }
 
 function CustomAudioSlider({
@@ -41,6 +43,7 @@ function CustomAudioSlider({
   step = 1,
   icon,
   onChange,
+  onCommit,
 }: SliderItemProps) {
   const trackWidthRef = useRef(260);
 
@@ -69,6 +72,12 @@ function CustomAudioSlider({
         const rawVal = min + ratio * (max - min);
         const newVal = Math.round(rawVal / step) * step;
         onChange(Number(newVal.toFixed(1)));
+      },
+      onPanResponderRelease: () => {
+        if (onCommit) onCommit();
+      },
+      onPanResponderTerminate: () => {
+        if (onCommit) onCommit();
       },
     })
   ).current;
@@ -144,6 +153,7 @@ const NOISE_PRESETS: { id: "fan" | "wind" | "hum" | "ac"; label: string; icon: s
 export function AudioPanel({
   audio = DEFAULT_AUDIO_SETTINGS,
   onUpdateAudio,
+  onCommitAudio,
   onClose,
   bottomInset = 20,
 }: AudioPanelProps) {
@@ -310,6 +320,7 @@ export function AudioPanel({
               unit="%"
               step={5}
               onChange={(val) => onUpdateAudio({ volume: val })}
+              onCommit={onCommitAudio}
             />
 
             {/* Fade In (0s - 10s) */}
@@ -322,6 +333,7 @@ export function AudioPanel({
               unit="s"
               step={0.1}
               onChange={(val) => onUpdateAudio({ fadeIn: Math.round(val * 1000) })}
+              onCommit={onCommitAudio}
             />
 
             {/* Fade Out (0s - 10s) */}
@@ -334,6 +346,7 @@ export function AudioPanel({
               unit="s"
               step={0.1}
               onChange={(val) => onUpdateAudio({ fadeOut: Math.round(val * 1000) })}
+              onCommit={onCommitAudio}
             />
 
             {/* Balance (-100 Left to +100 Right) */}
@@ -346,6 +359,7 @@ export function AudioPanel({
               unit=""
               step={5}
               onChange={(val) => onUpdateAudio({ balance: val })}
+              onCommit={onCommitAudio}
             />
           </View>
         )}
@@ -356,11 +370,12 @@ export function AudioPanel({
               <Text style={styles.subTitle}>Frequency Equalizer</Text>
               <TouchableOpacity
                 style={styles.resetBadge}
-                onPress={() =>
+                onPress={() => {
                   onUpdateAudio({
                     equalizer: { bass: 0, mid: 0, treble: 0, voice: 0 },
-                  })
-                }
+                  });
+                  if (onCommitAudio) onCommitAudio();
+                }}
               >
                 <Ionicons name="refresh" size={11} color="#FFCC00" style={{ marginRight: 3 }} />
                 <Text style={styles.resetText}>Reset EQ</Text>
@@ -374,6 +389,7 @@ export function AudioPanel({
               min={-100}
               max={100}
               onChange={(val) => handleUpdateEq("bass", val)}
+              onCommit={onCommitAudio}
             />
 
             <CustomAudioSlider
@@ -383,6 +399,7 @@ export function AudioPanel({
               min={-100}
               max={100}
               onChange={(val) => handleUpdateEq("mid", val)}
+              onCommit={onCommitAudio}
             />
 
             <CustomAudioSlider
@@ -392,6 +409,7 @@ export function AudioPanel({
               min={-100}
               max={100}
               onChange={(val) => handleUpdateEq("treble", val)}
+              onCommit={onCommitAudio}
             />
 
             <CustomAudioSlider
@@ -401,6 +419,7 @@ export function AudioPanel({
               min={-100}
               max={100}
               onChange={(val) => handleUpdateEq("voice", val)}
+              onCommit={onCommitAudio}
             />
           </View>
         )}
