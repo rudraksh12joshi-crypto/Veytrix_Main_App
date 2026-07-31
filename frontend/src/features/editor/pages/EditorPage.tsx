@@ -183,18 +183,30 @@ export function EditorPage() {
     }).start();
   };
 
-  // Compute timeline width from total project duration for helper tracks
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
+  const [draftTrimStart, setDraftTrimStart] = useState(0);
+  const [draftTrimEnd, setDraftTrimEnd] = useState(0);
+  const [isSnappingLeft, setIsSnappingLeft] = useState(false);
+  const [isSnappingRight, setIsSnappingRight] = useState(false);
+
+  const isTrimMode = selectedTool === "trim";
+
+  // Shared timeline width - single source of truth for ALL timeline rows
   const projectTimelineWidth = useMemo(() => {
     if (videoClips.length > 0) {
       const totalMs = videoClips.reduce((sum, clip) => {
-        const dur = Math.max(100, clip.endTime - clip.startTime);
-        return sum + dur / (clip.speed || 1.0);
+        const isSelected = clip.id === selectedClipId;
+        const activeStart = isTrimMode && isSelected ? draftTrimStart : clip.startTime;
+        const activeEnd = isTrimMode && isSelected ? draftTrimEnd : clip.endTime;
+        const rawDuration = Math.max(0, activeEnd - activeStart);
+        return sum + rawDuration / (clip.speed || 1.0);
       }, 0);
       const gapsPx = Math.max(0, videoClips.length - 1) * 28;
-      return Math.max(totalMs * PIXELS_PER_MS + gapsPx, 100);
+      return totalMs * PIXELS_PER_MS + gapsPx;
     }
-    return Math.max(totalDuration * PIXELS_PER_MS, 100);
-  }, [videoClips, totalDuration, PIXELS_PER_MS]);
+    return totalDuration * PIXELS_PER_MS;
+  }, [videoClips, totalDuration, isTrimMode, selectedClipId, draftTrimStart, draftTrimEnd, PIXELS_PER_MS]);
 
 
 
@@ -706,14 +718,6 @@ export function EditorPage() {
     );
   };
 
-  const [trimStart, setTrimStart] = useState(0);
-  const [trimEnd, setTrimEnd] = useState(0);
-  const [draftTrimStart, setDraftTrimStart] = useState(0);
-  const [draftTrimEnd, setDraftTrimEnd] = useState(0);
-  const [isSnappingLeft, setIsSnappingLeft] = useState(false);
-  const [isSnappingRight, setIsSnappingRight] = useState(false);
-
-  const isTrimMode = selectedTool === "trim";
 
   const draftTrimStartRef = useRef(draftTrimStart);
   draftTrimStartRef.current = draftTrimStart;
@@ -1702,7 +1706,7 @@ export function EditorPage() {
           >
             <View style={styles.tracks}>
                 <>
-                  <View style={[styles.vnTrack, { height: 32 }, isTrimMode && { opacity: 0.35 }]}>
+                  <View style={[styles.vnTrack, { width: projectTimelineWidth, height: 32 }, isTrimMode && { opacity: 0.35 }]}>
                     {musicTrack ? (
                       <TouchableOpacity 
                         activeOpacity={0.8}
@@ -1740,9 +1744,9 @@ export function EditorPage() {
                     )}
                   </View>
 
-                  <View style={[styles.vnTrack, { height: 32 }, isTrimMode && { opacity: 0.35 }]}>
+                  <View style={[styles.vnTrack, { width: projectTimelineWidth, height: 32 }, isTrimMode && { opacity: 0.35 }]}>
                     {textLayers.length > 0 ? (
-                      <View style={{ flexDirection: "row", gap: 4 }}>
+                      <View style={{ flexDirection: "row", gap: 4, width: projectTimelineWidth }}>
                         {textLayers.map((layer) => {
                           const durationMs = Math.max(100, layer.endTime - layer.startTime);
                           const widthPx = durationMs * PIXELS_PER_MS;
@@ -1789,7 +1793,7 @@ export function EditorPage() {
                     )}
                   </View>
 
-                  <View style={[styles.vnTrack, { height: 32 }, isTrimMode && { opacity: 0.35 }]}>
+                  <View style={[styles.vnTrack, { width: projectTimelineWidth, height: 32 }, isTrimMode && { opacity: 0.35 }]}>
                     {overlayLayers.length > 0 ? (
                       <View style={{ position: "relative", width: projectTimelineWidth, height: 32 }}>
                         {overlayLayers.map((layer) => {
@@ -1854,132 +1858,134 @@ export function EditorPage() {
 
                   {/* Video Track with Multi-Clip Support & Dynamic Speed Resizing */}
                   <View style={[styles.vnTrack, { height: 60, flexDirection: 'row' }, isTrimMode && { zIndex: 10 }]}>
-                    {videoClips.length > 0 ? (
-                      videoClips.map((clip, idx) => {
-                        const isSelected = clip.id === selectedClipId;
-                        const activeStart = isTrimMode && isSelected ? draftTrimStart : clip.startTime;
-                        const activeEnd = isTrimMode && isSelected ? draftTrimEnd : clip.endTime;
-                        const rawDuration = Math.max(100, activeEnd - activeStart);
-                        const clipDuration = rawDuration / (clip.speed || 1.0);
-                        const widthPx = clipDuration * PIXELS_PER_MS;
-                        const clipOffset = activeStart * PIXELS_PER_MS;
+                    <View style={{ flexDirection: 'row', width: projectTimelineWidth, height: 60 }}>
+                      {videoClips.length > 0 ? (
+                        videoClips.map((clip, idx) => {
+                          const isSelected = clip.id === selectedClipId;
+                          const activeStart = isTrimMode && isSelected ? draftTrimStart : clip.startTime;
+                          const activeEnd = isTrimMode && isSelected ? draftTrimEnd : clip.endTime;
+                          const rawDuration = Math.max(100, activeEnd - activeStart);
+                          const clipDuration = rawDuration / (clip.speed || 1.0);
+                          const widthPx = clipDuration * PIXELS_PER_MS;
+                          const clipOffset = activeStart * PIXELS_PER_MS;
 
-                        const hasNextClip = idx < videoClips.length - 1;
-                        const nextClip = hasNextClip ? videoClips[idx + 1] : null;
-                        const pairKey = nextClip ? `${clip.id}_${nextClip.id}` : "";
-                        const currentTransition = pairKey ? transitions[pairKey] : null;
-                        const isTransitionActive = Boolean(currentTransition && currentTransition.type !== "none");
+                          const hasNextClip = idx < videoClips.length - 1;
+                          const nextClip = hasNextClip ? videoClips[idx + 1] : null;
+                          const pairKey = nextClip ? `${clip.id}_${nextClip.id}` : "";
+                          const currentTransition = pairKey ? transitions[pairKey] : null;
+                          const isTransitionActive = Boolean(currentTransition && currentTransition.type !== "none");
 
-                        return (
-                          <React.Fragment key={clip.id}>
-                            <TouchableOpacity
-                              activeOpacity={0.9}
-                              onPress={() => setSelectedClipId(clip.id)}
-                              style={[
-                                styles.vnVideoClip,
-                                {
-                                  width: widthPx,
-                                  borderWidth: isTrimMode && isSelected ? 2 : isSelected ? 1.5 : 0,
-                                  borderColor: isTrimMode && isSelected ? "#FFCC00" : isSelected ? "#fff" : "transparent",
-                                },
-                              ]}
-                            >
-                              <View style={[styles.vnThumbnails, { marginLeft: -(clip.trimStartOffset || 0) * PIXELS_PER_MS }]}>
-                                {[...Array(Math.max(1, Math.ceil(((clip.originalDuration || 5000) * PIXELS_PER_MS) / THUMBNAIL_WIDTH)))].map((_, i) => (
-                                  <Image
-                                    key={i}
-                                    source={{ uri: clip.thumbnailUri || clip.videoUri || videoUri || "https://images.unsplash.com/photo-1517404215738-15263e9f9178" }}
-                                    style={styles.vnThumb}
-                                  />
-                                ))}
-                              </View>
-                              
-                              {!isTrimMode && isSelected && <View style={styles.vnYellowBorder} />}
+                          return (
+                            <React.Fragment key={clip.id}>
+                              <TouchableOpacity
+                                activeOpacity={0.9}
+                                onPress={() => setSelectedClipId(clip.id)}
+                                style={[
+                                  styles.vnVideoClip,
+                                  {
+                                    width: widthPx,
+                                    borderWidth: isTrimMode && isSelected ? 2 : isSelected ? 1.5 : 0,
+                                    borderColor: isTrimMode && isSelected ? "#FFCC00" : isSelected ? "#fff" : "transparent",
+                                  },
+                                ]}
+                              >
+                                <View style={[styles.vnThumbnails, { marginLeft: -(clip.trimStartOffset || 0) * PIXELS_PER_MS }]}>
+                                  {[...Array(Math.max(1, Math.ceil(((clip.originalDuration || 5000) * PIXELS_PER_MS) / THUMBNAIL_WIDTH)))].map((_, i) => (
+                                    <Image
+                                      key={i}
+                                      source={{ uri: clip.thumbnailUri || clip.videoUri || videoUri || "https://images.unsplash.com/photo-1517404215738-15263e9f9178" }}
+                                      style={styles.vnThumb}
+                                    />
+                                  ))}
+                                </View>
+                                
+                                {!isTrimMode && isSelected && <View style={styles.vnYellowBorder} />}
 
-                              {isTrimMode && isSelected && (
-                                <>
-                                  {/* Left Trim Handle */}
-                                  <View 
-                                    {...leftPanResponder.panHandlers}
+                                {isTrimMode && isSelected && (
+                                  <>
+                                    {/* Left Trim Handle */}
+                                    <View 
+                                      {...leftPanResponder.panHandlers}
+                                      style={[
+                                        styles.trimHandle, 
+                                        styles.trimHandleLeft,
+                                        isSnappingLeft && styles.trimHandleSnapping
+                                      ]}
+                                    >
+                                      <View style={styles.trimHandleGrip} />
+                                      <View style={styles.trimHandleGrip} />
+                                    </View>
+
+                                    {/* Right Trim Handle */}
+                                    <View 
+                                      {...rightPanResponder.panHandlers}
+                                      style={[
+                                        styles.trimHandle, 
+                                        styles.trimHandleRight,
+                                        isSnappingRight && styles.trimHandleSnapping
+                                      ]}
+                                    >
+                                      <View style={styles.trimHandleGrip} />
+                                      <View style={styles.trimHandleGrip} />
+                                    </View>
+                                  </>
+                                )}
+
+                                <View style={styles.vnClipTime}>
+                                  <Text style={styles.vnClipTimeText}>
+                                    {formatTime(clipDuration)} {clip.speed && clip.speed !== 1 ? `(${clip.speed}x)` : ''}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+
+                              {/* Transition Gap Placeholder & Centered [+] Button between Adjacent Clips */}
+                              {hasNextClip && nextClip && (
+                                <View style={styles.transitionGapContainer}>
+                                  <TouchableOpacity
+                                    activeOpacity={0.8}
                                     style={[
-                                      styles.trimHandle, 
-                                      styles.trimHandleLeft,
-                                      isSnappingLeft && styles.trimHandleSnapping
+                                      styles.transitionBtn,
+                                      isTransitionActive && styles.transitionBtnActive,
                                     ]}
+                                    onPress={() => {
+                                      setSelectedTransitionPair({
+                                        fromId: clip.id,
+                                        toId: nextClip.id,
+                                        fromIndex: idx,
+                                        toIndex: idx + 1,
+                                      });
+                                      setSelectedTool("transitions");
+                                    }}
                                   >
-                                    <View style={styles.trimHandleGrip} />
-                                    <View style={styles.trimHandleGrip} />
-                                  </View>
-
-                                  {/* Right Trim Handle */}
-                                  <View 
-                                    {...rightPanResponder.panHandlers}
-                                    style={[
-                                      styles.trimHandle, 
-                                      styles.trimHandleRight,
-                                      isSnappingRight && styles.trimHandleSnapping
-                                    ]}
-                                  >
-                                    <View style={styles.trimHandleGrip} />
-                                    <View style={styles.trimHandleGrip} />
-                                  </View>
-                                </>
+                                    {isTransitionActive ? (
+                                      <Ionicons name="swap-horizontal" size={12} color="#000" />
+                                    ) : (
+                                      <Ionicons name="add" size={14} color="#fff" />
+                                    )}
+                                  </TouchableOpacity>
+                                </View>
                               )}
-
-                              <View style={styles.vnClipTime}>
-                                <Text style={styles.vnClipTimeText}>
-                                  {formatTime(clipDuration)} {clip.speed && clip.speed !== 1 ? `(${clip.speed}x)` : ''}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-
-                            {/* Transition Gap Placeholder & Centered [+] Button between Adjacent Clips */}
-                            {hasNextClip && nextClip && (
-                              <View style={styles.transitionGapContainer}>
-                                <TouchableOpacity
-                                  activeOpacity={0.8}
-                                  style={[
-                                    styles.transitionBtn,
-                                    isTransitionActive && styles.transitionBtnActive,
-                                  ]}
-                                  onPress={() => {
-                                    setSelectedTransitionPair({
-                                      fromId: clip.id,
-                                      toId: nextClip.id,
-                                      fromIndex: idx,
-                                      toIndex: idx + 1,
-                                    });
-                                    setSelectedTool("transitions");
-                                  }}
-                                >
-                                  {isTransitionActive ? (
-                                    <Ionicons name="swap-horizontal" size={12} color="#000" />
-                                  ) : (
-                                    <Ionicons name="add" size={14} color="#fff" />
-                                  )}
-                                </TouchableOpacity>
-                              </View>
-                            )}
-                          </React.Fragment>
-                        );
-                      })
-                    ) : (
-                      <View style={[styles.vnVideoClip, { width: totalDuration * PIXELS_PER_MS || 300 }]}>
-                        <View style={styles.vnThumbnails}>
-                          {[...Array(Math.max(1, Math.ceil((totalDuration * PIXELS_PER_MS) / THUMBNAIL_WIDTH)))].map((_, i) => (
-                            <Image 
-                              key={i} 
-                              source={{uri: videoUri || "https://images.unsplash.com/photo-1517404215738-15263e9f9178"}} 
-                              style={styles.vnThumb} 
-                            />
-                          ))}
+                            </React.Fragment>
+                          );
+                        })
+                      ) : (
+                        <View style={[styles.vnVideoClip, { width: projectTimelineWidth }]}>
+                          <View style={styles.vnThumbnails}>
+                            {[...Array(Math.max(1, Math.ceil((projectTimelineWidth) / THUMBNAIL_WIDTH)))].map((_, i) => (
+                              <Image 
+                                key={i} 
+                                source={{uri: videoUri || "https://images.unsplash.com/photo-1517404215738-15263e9f9178"}} 
+                                style={styles.vnThumb} 
+                              />
+                            ))}
+                          </View>
+                          <View style={styles.vnYellowBorder} />
+                          <View style={styles.vnClipTime}>
+                            <Text style={styles.vnClipTimeText}>{formatTime(totalDuration)}</Text>
+                          </View>
                         </View>
-                        <View style={styles.vnYellowBorder} />
-                        <View style={styles.vnClipTime}>
-                          <Text style={styles.vnClipTimeText}>{formatTime(totalDuration)}</Text>
-                        </View>
-                      </View>
-                    )}
+                      )}
+                    </View>
                     
                     <TouchableOpacity 
                       activeOpacity={0.8} 
@@ -2000,7 +2006,7 @@ export function EditorPage() {
                   </View>
                   
                   {/* Embedded Video Audio Waveform Track - Directly Derived 1-to-1 from Video Clips */}
-                  <View style={[styles.vnTrack, { height: 24, flexDirection: 'row' }, isTrimMode && { opacity: 0.35 }]}>
+                  <View style={[styles.vnTrack, { width: projectTimelineWidth, height: 24, flexDirection: 'row' }, isTrimMode && { opacity: 0.35 }]}>
                     {videoClips.length > 0 ? (
                       videoClips.map((clip, idx) => {
                         const isSelected = clip.id === selectedClipId;
@@ -2027,7 +2033,7 @@ export function EditorPage() {
                     )}
                   </View>
 
-                  <View style={styles.vnRuler}>
+                  <View style={[styles.vnRuler, { width: projectTimelineWidth }]}>
                     {[...Array(Math.max(1, Math.ceil((projectTimelineWidth / PIXELS_PER_MS) / 1000) + 1))].map((_, i) => (
                       <View key={i} style={[styles.vnRulerMark, { width: 1000 * PIXELS_PER_MS }]}>
                         <Text style={styles.vnRulerText}>{formatTime(i * 1000)}</Text>
@@ -2613,10 +2619,13 @@ const styles = StyleSheet.create({
   timelineContainer: {
     flex: 1,
     position: "relative",
+    userSelect: "none" as any,
+    outlineStyle: "none" as any,
   },
   timelineBody: {
     flex: 1,
     flexDirection: "row",
+    userSelect: "none" as any,
   },
   fixedLeftColumn: {
     width: 80,
@@ -2686,11 +2695,14 @@ const styles = StyleSheet.create({
   },
   tracks: {
     gap: 4,
+    userSelect: "none" as any,
   },
   vnTrack: {
     flexDirection: "row",
     alignItems: "center",
     position: "relative",
+    userSelect: "none" as any,
+    outlineStyle: "none" as any,
   },
   vnClip: {
     height: "100%",
@@ -2710,6 +2722,8 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     overflow: "hidden",
     position: "relative",
+    userSelect: "none" as any,
+    outlineStyle: "none" as any,
   },
   splitSeamLine: {
     position: "absolute",
@@ -2754,8 +2768,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   vnWaveformMock: {
-    flex: 1,
-    width: 300,
     height: "100%",
     backgroundColor: "rgba(255, 204, 0, 0.15)",
     overflow: "hidden",
@@ -2809,7 +2821,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   playheadLineSnapping: {
-    backgroundColor: "#00E5FF",
+    backgroundColor: "#FFCC00",
     width: 3,
   },
   playheadHandle: {
@@ -2828,7 +2840,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   playheadHandleSnapping: {
-    backgroundColor: "#00E5FF",
+    backgroundColor: "#FFCC00",
   },
   playheadHandleInner: {
     width: 8,
@@ -2967,6 +2979,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 4,
     elevation: 6,
+    userSelect: "none" as any,
+    outlineStyle: "none" as any,
   },
   trimHandleLeft: {
     left: 0,
@@ -2979,8 +2993,8 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 6,
   },
   trimHandleSnapping: {
-    backgroundColor: "#00E5FF",
-    shadowColor: "#00E5FF",
+    backgroundColor: "#FFD700",
+    shadowColor: "#FFCC00",
     shadowOpacity: 0.9,
     shadowRadius: 8,
     elevation: 10,
