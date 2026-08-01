@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Image, Animated, PanResponder, Platform, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Image, Animated, PanResponder, Platform, useWindowDimensions, LayoutAnimation } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -138,6 +138,8 @@ export function EditorPage() {
   const { videosData, videoUri, duration } = useLocalSearchParams<{ videosData?: string; videoUri?: string; duration?: string }>();
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
 
+  const { height: screenHeight } = useWindowDimensions();
+  const timelineHeight = 236;
   const PIXELS_PER_MS = 0.05;
   const THUMBNAIL_WIDTH = 60;
 
@@ -1043,6 +1045,12 @@ export function EditorPage() {
   };
 
   const handleSelectTool = (toolId: string) => {
+    LayoutAnimation.configureNext({
+      duration: 200,
+      create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      update: { type: LayoutAnimation.Types.easeInEaseOut },
+      delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity }
+    });
     if (toolId === "split") {
       handleSplitClip();
     } else if (toolId === "stickers") {
@@ -1557,7 +1565,14 @@ export function EditorPage() {
               </View>
             </View>
           </View>
-        ) : (
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderPlaybackControls = () => {
+    if (isPreviewFullscreen) return null;
+    return (
       <View style={styles.playbackControls}>
         <View style={styles.playbackTimeWrap}>
           <Text style={styles.timeTextCompact}>
@@ -1625,10 +1640,8 @@ export function EditorPage() {
           })()}
         </View>
       </View>
-        )}
-    </View>
-  );
-};
+    );
+  };
 
   const renderTimeline = () => {
     return (
@@ -2335,17 +2348,31 @@ export function EditorPage() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: "#121212" }]} edges={['top']}>
+      {/* 1. TOP NAV BAR (fixed height) */}
       {!isPreviewFullscreen && renderTopToolbar()}
-      {renderVideoPreview()}
+      
+      {/* 2. MAIN VIDEO PREVIEW (flex: 1 - dominant focus) */}
+      <View style={{ flex: 1, backgroundColor: "#000" }}>
+        {renderVideoPreview()}
+      </View>
+      
+      {/* 3. PLAYBACK CONTROLS BAR (height: 60) */}
       {!isPreviewFullscreen && (
-        <View style={{ flex: 1, position: 'relative' }}>
+        <View style={{ height: 60, backgroundColor: "#141416" }}>
+          {renderPlaybackControls()}
+        </View>
+      )}
+      
+      {/* 4. TIMELINE PANEL (fixed height 236px) */}
+      {!isPreviewFullscreen && (
+        <View style={[styles.timelineSection, { height: timelineHeight, flex: 0 }]}>
           {renderTimeline()}
           {!isTrimMode && (
             <TouchableOpacity
               activeOpacity={1}
               onPressIn={handleAiPressIn}
               onPressOut={handleAiPressOut}
-              style={styles.floatingAiBtnWrap}
+              style={[styles.floatingAiBtnWrap, { bottom: 12, right: 16 }]}
             >
               <Animated.View style={[styles.floatingAiBtn, { transform: [{ scale: aiScaleAnim }] }]}>
                 <LinearGradient
@@ -2360,8 +2387,25 @@ export function EditorPage() {
           )}
         </View>
       )}
-      {!isPreviewFullscreen && (selectedTool || selectedTimelineClip) && renderPropertiesPanel()}
-      {!isPreviewFullscreen && renderEditingToolbar()}
+      
+      {/* 5. BOTTOM TOOLBAR (height: 92 + safe area, anchored at the bottom) */}
+      {!isPreviewFullscreen && (
+        <View style={{ height: 92 + insets.bottom, paddingBottom: insets.bottom, backgroundColor: "#141416", overflow: 'hidden' }}>
+          {(() => {
+            const isPanelOpen = Boolean(selectedTool) || Boolean(selectedTimelineClip);
+            if (isTrimMode) return renderEditingToolbar();
+            if (isPanelOpen) return null; // Hide toolbar completely when panel is open
+            return renderEditingToolbar();
+          })()}
+        </View>
+      )}
+
+      {/* 6. TOOL PANEL OVERLAY (absolute overlay, zIndex: 100) */}
+      {!isPreviewFullscreen && (Boolean(selectedTool) || Boolean(selectedTimelineClip)) && !isTrimMode && (
+        <View style={styles.propertiesPanelContainer}>
+          {renderPropertiesPanel()}
+        </View>
+      )}
       
       <MusicLibrarySheet 
         visible={musicSheetVisible} 
@@ -2373,525 +2417,139 @@ export function EditorPage() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1 },
+  propertiesPanelContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    elevation: 20,
+  },
+  timelineSection: {
+    backgroundColor: "#141416",
+    position: "relative",
   },
   topToolbar: {
+    height: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: "#121212",
   },
-  leftActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-  },
-  iconButton: {
-    width: 32,
-    height: 32,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  headerCenter: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  moreOptionsBtn: {
-    marginLeft: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  aspectRatioText: {
-    fontSize: 15,
-    color: "#fff",
-    fontWeight: "500",
-  },
-  topActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  saveButton: {
-    backgroundColor: "#2C2C2E",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  exportButtonSmall: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  previewContainer: {
-    flex: 1,
-    width: "100%",
-  },
+  leftActions: { flexDirection: "row", alignItems: "center", gap: 16 },
+  iconButton: { width: 32, height: 32, justifyContent: "center", alignItems: "center" },
+  headerCenter: { flexDirection: "row", alignItems: "center" },
+  moreOptionsBtn: { marginLeft: 16, justifyContent: "center", alignItems: "center" },
+  aspectRatioText: { fontSize: 15, color: "#fff", fontWeight: "500" },
+  topActions: { flexDirection: "row", alignItems: "center", gap: 12 },
+  saveButton: { backgroundColor: "#2C2C2E", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  exportButtonSmall: { backgroundColor: "#007AFF", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  previewContainer: { flex: 1, width: "100%", backgroundColor: "#000" },
   fullscreenContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#000',
-    zIndex: 9999,
-    elevation: 9999,
-    flex: 1,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: '#000', zIndex: 9999, elevation: 9999, flex: 1,
   },
   fullscreenControls: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'space-between',
-    padding: 24,
-    zIndex: 10000,
-    elevation: 10000,
-    pointerEvents: 'box-none',
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'space-between', padding: 24, zIndex: 10000, elevation: 10000, pointerEvents: 'box-none',
   },
-  fullscreenTopBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 40,
-    pointerEvents: 'box-none',
-  },
-  fullscreenBottomBar: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-  },
-  fullscreenScrubberWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-    gap: 12,
-  },
-  fullscreenScrubberTrackTouch: {
-    flex: 1,
-    height: 24,
-    justifyContent: 'center',
-  },
-  fullscreenScrubberTrack: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  fullscreenScrubberFill: {
-    height: '100%',
-    backgroundColor: '#fff',
-  },
-  fullscreenTime: {
-    color: '#fff',
-    fontSize: 12,
-    fontVariant: ['tabular-nums'],
-    width: 44,
-    textAlign: 'center',
-  },
-  fullscreenPlayActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 32,
-  },
-  fullscreenActionBtn: {
-    padding: 8,
-  },
-  fullscreenMainPlayBtn: {
-    width: 64,
-    height: 64,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  previewBox: {
-    flex: 1,
-    backgroundColor: "#000",
-    width: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
+  fullscreenTopBar: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 40, pointerEvents: 'box-none' },
+  fullscreenBottomBar: { backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 16, padding: 16, marginBottom: 20 },
+  fullscreenScrubberWrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 24, gap: 12 },
+  fullscreenScrubberTrackTouch: { flex: 1, height: 24, justifyContent: 'center' },
+  fullscreenScrubberTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, overflow: 'hidden' },
+  fullscreenScrubberFill: { height: '100%', backgroundColor: '#fff' },
+  fullscreenTime: { color: '#fff', fontSize: 12, fontVariant: ['tabular-nums'], width: 44, textAlign: 'center' },
+  fullscreenPlayActions: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 32 },
+  fullscreenActionBtn: { padding: 8 },
+  fullscreenMainPlayBtn: { width: 64, height: 64, justifyContent: 'center', alignItems: 'center' },
+  previewBox: { flex: 1, backgroundColor: "#000", width: "100%", justifyContent: "center", alignItems: "center", overflow: "hidden" },
   fullscreenButton: {
-    position: "absolute",
-    bottom: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    borderRadius: 16,
+    position: "absolute", bottom: 12, right: 12, width: 32, height: 32,
+    justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 16,
   },
   playbackControls: {
+    height: 60,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 12,
-    paddingVertical: 8,
     width: "100%",
+    backgroundColor: "#141416",
   },
-  playbackTimeWrap: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-  timeTextCompact: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#fff",
-    fontVariant: ["tabular-nums"],
-  },
-  timeTotalText: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: 11,
-  },
-  playActionsCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  compactActionBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  mainPlayBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    shadowColor: "#007AFF",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  mainPlayBtnGradient: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 19,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  playbackRightActions: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 12,
-  },
-  rightActionBtn: {
-    padding: 2,
-  },
-  sliderTrack: {
-    width: "100%",
-    height: 6,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    borderRadius: 3,
-    justifyContent: "center",
-    position: "relative",
-  },
-  sliderFill: {
-    height: "100%",
-    borderRadius: 3,
-  },
+  playbackTimeWrap: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-start" },
+  timeTextCompact: { fontSize: 11, fontWeight: "600", color: "#fff", fontVariant: ["tabular-nums"] },
+  timeTotalText: { color: "rgba(255,255,255,0.4)", fontSize: 11 },
+  playActionsCompact: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  compactActionBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(255, 255, 255, 0.12)", justifyContent: "center", alignItems: "center" },
+  mainPlayBtn: { width: 38, height: 38, borderRadius: 19, shadowColor: "#007AFF", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.4, shadowRadius: 6, elevation: 4 },
+  mainPlayBtnGradient: { width: "100%", height: "100%", borderRadius: 19, justifyContent: "center", alignItems: "center" },
+  playbackRightActions: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 12 },
+  rightActionBtn: { padding: 2 },
+  sliderTrack: { width: "100%", height: 6, backgroundColor: "rgba(255,255,255,0.18)", borderRadius: 3, justifyContent: "center", position: "relative" },
+  sliderFill: { height: "100%", borderRadius: 3 },
   sliderThumb: {
-    position: "absolute",
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    marginTop: -6,
-    marginLeft: -9,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 4,
+    position: "absolute", width: 18, height: 18, borderRadius: 9, marginTop: -6, marginLeft: -9,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4, elevation: 4,
   },
-  timelineContainer: {
-    flex: 1,
-    position: "relative",
-    userSelect: "none" as any,
-    outlineStyle: "none" as any,
-  },
-  timelineBody: {
-    flex: 1,
-    flexDirection: "row",
-    userSelect: "none" as any,
-  },
-  fixedLeftColumn: {
-    width: 80,
-    paddingTop: 16,
-    flexDirection: "row",
-    zIndex: 10,
-    backgroundColor: "#1A1A1E",
-    borderRightWidth: 1,
-    borderRightColor: "rgba(255,255,255,0.05)",
-  },
-  coverButtonBox: {
-    width: 44,
-    alignItems: "center",
-    justifyContent: "flex-start",
-    paddingLeft: 4,
-  },
-  coverButton: {
-    width: 32,
-    height: 38,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 111,
-  },
-  coverText: {
-    color: "#fff",
-    fontSize: 9,
-    fontWeight: "600",
-  },
-  trackIcons: {
-    flex: 1,
-    alignItems: "center",
-  },
-  trackIconWrap: {
-    width: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  textIconBorder: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: "#8E8E93",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  plusBadge: {
-    position: "absolute",
-    bottom: "20%",
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  timelineScroll: {
-    paddingLeft: 10,
-    paddingRight: width,
-    paddingTop: 16,
-  },
-  tracks: {
-    gap: 4,
-    userSelect: "none" as any,
-  },
-  vnTrack: {
-    flexDirection: "row",
-    alignItems: "center",
-    position: "relative",
-    userSelect: "none" as any,
-    outlineStyle: "none" as any,
-  },
-  vnClip: {
-    height: "100%",
-    borderRadius: 6,
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  vnPlaceholderText: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  vnVideoClip: {
-    height: "100%",
-    backgroundColor: "#000",
-    borderRadius: 2,
-    overflow: "hidden",
-    position: "relative",
-    userSelect: "none" as any,
-    outlineStyle: "none" as any,
-  },
-  splitSeamLine: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: 2,
-    backgroundColor: "#FFCC00",
-    zIndex: 20,
-  },
-  vnThumbnails: {
-    flex: 1,
-    flexDirection: "row",
-  },
-  vnThumb: {
-    width: 60,
-    height: "100%",
-    opacity: 0.8,
-  },
-  vnYellowBorder: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderWidth: 2,
-    borderColor: "#FFCC00",
-    borderRadius: 2,
-  },
-  vnClipTime: {
-    position: "absolute",
-    bottom: 2,
-    left: 4,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 2,
-  },
-  vnClipTimeText: {
-    color: "#fff",
-    fontSize: 8,
-    fontWeight: "700",
-  },
-  vnWaveformMock: {
-    height: "100%",
-    backgroundColor: "rgba(255, 204, 0, 0.15)",
-    overflow: "hidden",
-    justifyContent: "flex-end",
-  },
-  vnWaveformShape: {
-    width: "100%",
-    height: "60%",
-    backgroundColor: "#FFCC00",
-    opacity: 0.8,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-  },
-  vnRuler: {
-    flexDirection: "row",
-    height: 24,
-    alignItems: "center",
-    marginTop: 4,
-  },
-  vnRulerMark: {
-    width: 80,
-    position: "relative",
-  },
-  vnRulerText: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: 10,
-    position: "absolute",
-    left: -12,
-    top: 8,
-  },
-  vnRulerDot: {
-    width: 2,
-    height: 2,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    borderRadius: 1,
-    position: "absolute",
-    left: 40,
-    top: 12,
-  },
-  playhead: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 2,
-    alignItems: "center",
-    zIndex: 20,
-  },
-  playheadLine: {
-    flex: 1,
-    width: 2,
-    backgroundColor: "#fff",
-  },
-  playheadLineSnapping: {
-    backgroundColor: "#FFCC00",
-    width: 3,
-  },
-  playheadHandle: {
-    position: "absolute",
-    top: 104,
-    width: 20,
-    height: 20,
-    backgroundColor: "#fff",
-    borderRadius: 4,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  playheadHandleSnapping: {
-    backgroundColor: "#FFCC00",
-  },
-  playheadHandleInner: {
-    width: 8,
-    height: 2,
-    backgroundColor: "#000",
-    borderRadius: 1,
-  },
-  floatingAiBtnWrap: {
-    position: "absolute",
-    bottom: 16,
-    right: 16,
-    zIndex: 25,
-    elevation: 12,
-  },
+  timelineContainer: { flex: 1, position: "relative" },
+  timelineBody: { flex: 1, flexDirection: "row" },
+  fixedLeftColumn: { width: 80, paddingTop: 8, flexDirection: "row", zIndex: 10, backgroundColor: "#1A1A1E", borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.05)" },
+  coverButtonBox: { width: 44, alignItems: "center", justifyContent: "flex-start", paddingLeft: 4 },
+  coverButton: { width: 32, height: 38, borderRadius: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)", backgroundColor: "rgba(255,255,255,0.1)", justifyContent: "center", alignItems: "center", marginTop: 111 },
+  coverText: { color: "#fff", fontSize: 9, fontWeight: "600" },
+  trackIcons: { flex: 1, alignItems: "center" },
+  trackIconWrap: { width: "100%", justifyContent: "center", alignItems: "center", marginBottom: 4 },
+  textIconBorder: { width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, borderColor: "#8E8E93", justifyContent: "center", alignItems: "center" },
+  plusBadge: { position: "absolute", bottom: "20%", right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: "#fff", justifyContent: "center", alignItems: "center" },
+  timelineScroll: { paddingLeft: 10, paddingRight: width, paddingTop: 8 },
+  tracks: { gap: 4 },
+  vnTrack: { flexDirection: "row", alignItems: "center", position: "relative" },
+  vnClip: { height: "100%", borderRadius: 6, justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
+  vnPlaceholderText: { color: "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: "500" },
+  vnVideoClip: { height: "100%", backgroundColor: "#000", borderRadius: 2, overflow: "hidden", position: "relative" },
+  vnThumbnails: { flex: 1, flexDirection: "row" },
+  vnThumb: { width: 60, height: "100%", opacity: 0.8 },
+  vnYellowBorder: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderWidth: 2, borderColor: "#FFCC00", borderRadius: 2 },
+  vnClipTime: { position: "absolute", bottom: 2, left: 4, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 4, paddingVertical: 2, borderRadius: 2 },
+  vnClipTimeText: { color: "#fff", fontSize: 8, fontWeight: "700" },
+  vnWaveformMock: { height: "100%", backgroundColor: "rgba(255, 204, 0, 0.15)", overflow: "hidden", justifyContent: "flex-end" },
+  vnWaveformShape: { width: "100%", height: "60%", backgroundColor: "#FFCC00", opacity: 0.8, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  vnRuler: { flexDirection: "row", height: 24, alignItems: "center", marginTop: 4 },
+  vnRulerMark: { width: 80, position: "relative" },
+  vnRulerText: { color: "rgba(255,255,255,0.4)", fontSize: 10, position: "absolute", left: -12, top: 8 },
+  vnRulerDot: { width: 2, height: 2, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: 1, position: "absolute", left: 40, top: 12 },
+  playhead: { position: "absolute", top: 0, bottom: 0, width: 2, alignItems: "center", zIndex: 20 },
+  playheadLine: { flex: 1, width: 2, backgroundColor: "#fff" },
+  playheadLineSnapping: { backgroundColor: "#FFCC00", width: 3 },
+  playheadHandle: { position: "absolute", top: 104, width: 20, height: 20, backgroundColor: "#fff", borderRadius: 4, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4, elevation: 4 },
+  playheadHandleSnapping: { backgroundColor: "#FFCC00" },
+  playheadHandleInner: { width: 8, height: 2, backgroundColor: "#000", borderRadius: 1 },
+  floatingAiBtnWrap: { position: "absolute", bottom: 16, right: 16, zIndex: 25, elevation: 12 },
   floatingAiBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    shadowColor: "#3B82F6",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", overflow: "hidden",
+    shadowColor: "#3B82F6", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
   },
   editingToolbar: {
-    backgroundColor: "rgba(18,18,24,0.92)",
+    height: 92,
+    backgroundColor: "rgba(18,18,24,0.97)",
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.06)",
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 16,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 12,
   },
   toolbarScroll: {
-    paddingHorizontal: 10,
-    paddingTop: 6,
-    paddingBottom: 6,
-    gap: 12,
+    paddingHorizontal: 0,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 0,
     alignItems: "center",
-  },
-  toolBtn: {
-    alignItems: "center",
-    width: 56,
-    minHeight: 44,
   },
   toolIconBox: {
     width: 56,
@@ -3082,14 +2740,15 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   propertiesPanel: {
+    flex: 1,
     backgroundColor: "#1A1A1D",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 20,
+    padding: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -10 },
+    shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.2,
-    shadowRadius: 20,
+    shadowRadius: 10,
     elevation: 10,
   },
   panelHeader: {

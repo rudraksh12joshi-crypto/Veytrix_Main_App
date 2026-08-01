@@ -13,13 +13,18 @@ export type TransitionType =
   | "none"
   | "fade"
   | "dissolve"
-  | "zoom"
+  | "crossfade"
+  | "push"
   | "slide"
-  | "wipe"
-  | "blur"
+  | "zoom"
   | "spin"
+  | "blur"
+  | "flash"
   | "glitch"
-  | "flash";
+  | "film"
+  | "ripple"
+  | "whip"
+  | "stretch";
 
 export interface ClipTransition {
   id: string;
@@ -55,15 +60,20 @@ interface TransitionOption {
 
 const TRANSITION_OPTIONS: TransitionOption[] = [
   { id: "none", label: "None", icon: "close-circle-outline", color: "#8E8E93" },
-  { id: "dissolve", label: "Dissolve", icon: "color-filter-outline", color: "#3B82F6" },
   { id: "fade", label: "Fade", icon: "contrast-outline", color: "#8B5CF6" },
-  { id: "zoom", label: "Zoom In", icon: "scan-outline", color: "#EC4899" },
-  { id: "slide", label: "Slide Left", icon: "arrow-forward-outline", color: "#10B981" },
-  { id: "wipe", label: "Wipe", icon: "reorder-two-outline", color: "#F59E0B" },
-  { id: "blur", label: "Blur", icon: "sparkles-outline", color: "#06B6D4" },
+  { id: "dissolve", label: "Dissolve", icon: "color-filter-outline", color: "#3B82F6" },
+  { id: "crossfade", label: "Cross Fade", icon: "git-commit-outline", color: "#60A5FA" },
+  { id: "push", label: "Push", icon: "enter-outline", color: "#F59E0B" },
+  { id: "slide", label: "Slide", icon: "arrow-forward-outline", color: "#10B981" },
+  { id: "zoom", label: "Zoom", icon: "scan-outline", color: "#EC4899" },
   { id: "spin", label: "Spin", icon: "refresh-outline", color: "#6366F1" },
-  { id: "glitch", label: "Glitch", icon: "flash-outline", color: "#EF4444" },
+  { id: "blur", label: "Blur", icon: "sparkles-outline", color: "#06B6D4" },
   { id: "flash", label: "Flash", icon: "sunny-outline", color: "#EAB308" },
+  { id: "glitch", label: "Glitch", icon: "flash-outline", color: "#EF4444" },
+  { id: "film", label: "Film", icon: "videocam-outline", color: "#EC4899" },
+  { id: "ripple", label: "Ripple", icon: "water-outline", color: "#3B82F6" },
+  { id: "whip", label: "Whip", icon: "shuffle-outline", color: "#10B981" },
+  { id: "stretch", label: "Stretch", icon: "resize-outline", color: "#8B5CF6" },
 ];
 
 export function TransitionPanel({
