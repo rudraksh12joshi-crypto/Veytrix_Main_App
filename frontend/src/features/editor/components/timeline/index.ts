@@ -8,3 +8,8 @@ export * from "./TimelinePlayhead";
 export * from "./TimelineSelection";
 export * from "./TimelineLayers";
 export * from "./TimelineZoomControl";
+export * from "./timeline.constants";
+export * from "./timeline.types";
+export * from "./timeline.utils";
+export * from "./useTimeline";
+

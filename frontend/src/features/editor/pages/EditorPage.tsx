@@ -21,6 +21,25 @@ import { RotatePanel } from "../panels/RotatePanel";
 import { TextOverlay } from "../text/TextOverlay";
 import { OverlayOverlay } from "../overlay/OverlayOverlay";
 import { TransitionPanel, ClipTransition, TransitionType, TransitionPair } from "../panels/TransitionPanel";
+import { usePlayback } from "../player";
+import { useTimeline, PIXELS_PER_MS, THUMBNAIL_WIDTH, DEFAULT_TIMELINE_HEIGHT } from "../components/timeline";
+import { useProjectStore } from "../store";
+import { FilterPanel } from "../filters";
+
+
+import {
+  commandManager,
+  TrimCommand,
+  SplitCommand,
+  RotateCommand,
+  TextCommand,
+  OverlayCommand,
+  ImportMediaCommand,
+  AdjustCommand,
+} from "../commands";
+
+
+
 
 const { width } = Dimensions.get("window");
 
@@ -139,30 +158,39 @@ export function EditorPage() {
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
 
   const { height: screenHeight } = useWindowDimensions();
-  const timelineHeight = 236;
-  const PIXELS_PER_MS = 0.05;
-  const THUMBNAIL_WIDTH = 60;
+  const timelineHeight = DEFAULT_TIMELINE_HEIGHT;
+
 
   const videoRef = useRef<Video>(null);
+  const audioRef = useRef<Audio.Sound | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const lastStateUpdate = useRef(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const isPlaying = useProjectStore((s) => s.isPlaying);
+  const setIsPlaying = useProjectStore((s) => s.setIsPlaying);
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
   const [scrubberWidth, setScrubberWidth] = useState(0);
-  const [previewMuted, setPreviewMuted] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [totalDuration, setTotalDuration] = useState(duration ? parseInt(duration) : 0);
+  const currentTime = useProjectStore((s) => s.currentTime);
+  const setCurrentTime = useProjectStore((s) => s.setCurrentTime);
+  const totalDuration = useProjectStore((s) => s.totalDuration);
+  const setTotalDuration = useProjectStore((s) => s.setTotalDuration);
 
-  const [videoClips, setVideoClips] = useState<VideoClip[]>([]);
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const videoClips = useProjectStore((s) => s.videoClips);
+  const setVideoClips = useProjectStore((s) => s.setVideoClips);
+  const selectedClipId = useProjectStore((s) => s.selectedClipId);
+  const setSelectedClipId = useProjectStore((s) => s.setSelectedClipId);
 
-  // Text Layers State
-  const [textLayers, setTextLayers] = useState<TextLayer[]>([]);
-  const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
+  // Text Layers State from Project Store
+  const textLayers = useProjectStore((s) => s.textLayers);
+  const setTextLayers = useProjectStore((s) => s.setTextLayers);
+  const selectedTextLayerId = useProjectStore((s) => s.selectedTextLayerId);
+  const setSelectedTextLayerId = useProjectStore((s) => s.setSelectedTextLayerId);
 
-  // Overlay Layers State
-  const [overlayLayers, setOverlayLayers] = useState<OverlayLayer[]>([]);
-  const [selectedOverlayLayerId, setSelectedOverlayLayerId] = useState<string | null>(null);
+  // Overlay Layers State from Project Store
+  const overlayLayers = useProjectStore((s) => s.overlayLayers);
+  const setOverlayLayers = useProjectStore((s) => s.setOverlayLayers);
+  const selectedOverlayLayerId = useProjectStore((s) => s.selectedOverlayLayerId);
+  const setSelectedOverlayLayerId = useProjectStore((s) => s.setSelectedOverlayLayerId);
+
 
   // AI Assist floating button
   const aiScaleAnim = useRef(new Animated.Value(1)).current;
@@ -194,21 +222,8 @@ export function EditorPage() {
 
   const isTrimMode = selectedTool === "trim";
 
-  // Shared timeline width - single source of truth for ALL timeline rows
-  const projectTimelineWidth = useMemo(() => {
-    if (videoClips.length > 0) {
-      const totalMs = videoClips.reduce((sum, clip) => {
-        const isSelected = clip.id === selectedClipId;
-        const activeStart = isTrimMode && isSelected ? draftTrimStart : clip.startTime;
-        const activeEnd = isTrimMode && isSelected ? draftTrimEnd : clip.endTime;
-        const rawDuration = Math.max(0, activeEnd - activeStart);
-        return sum + rawDuration / (clip.speed || 1.0);
-      }, 0);
-      const gapsPx = Math.max(0, videoClips.length - 1) * 28;
-      return totalMs * PIXELS_PER_MS + gapsPx;
-    }
-    return totalDuration * PIXELS_PER_MS;
-  }, [videoClips, totalDuration, isTrimMode, selectedClipId, draftTrimStart, draftTrimEnd, PIXELS_PER_MS]);
+
+
 
 
 
@@ -316,70 +331,13 @@ export function EditorPage() {
   }, [createSnapshot]);
 
   const handleUndo = useCallback(() => {
-    const currentIdx = historyIndexRef.current;
-    const currentHist = historyRef.current;
-
-    if (currentIdx <= 0 || currentHist.length === 0) return;
-
-    isUndoingOrRedoingRef.current = true;
-    const newIndex = currentIdx - 1;
-    const previousState = currentHist[newIndex];
-
-    historyIndexRef.current = newIndex;
-    setHistoryIndex(newIndex);
-
-    setVideoClips(previousState.videoClips || []);
-    setTextLayers(previousState.textLayers || []);
-    setOverlayLayers(previousState.overlayLayers || []);
-    setTotalDuration(previousState.totalDuration || 0);
-    setSelectedClipId(previousState.selectedClipId || null);
-    setSelectedTextLayerId(previousState.selectedTextLayerId || null);
-    setSelectedOverlayLayerId(previousState.selectedOverlayLayerId || null);
-    setCurrentTime(previousState.currentTime || 0);
-    setMusicTrack(previousState.musicTrack || null);
-    setTransitions(previousState.transitions || {});
-
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ x: (previousState.currentTime || 0) * PIXELS_PER_MS, animated: false });
-    }
-
-    setTimeout(() => {
-      isUndoingOrRedoingRef.current = false;
-    }, 50);
-  }, [PIXELS_PER_MS]);
+    commandManager.undo();
+  }, []);
 
   const handleRedo = useCallback(() => {
-    const currentIdx = historyIndexRef.current;
-    const currentHist = historyRef.current;
+    commandManager.redo();
+  }, []);
 
-    if (currentIdx < 0 || currentIdx >= currentHist.length - 1) return;
-
-    isUndoingOrRedoingRef.current = true;
-    const newIndex = currentIdx + 1;
-    const nextState = currentHist[newIndex];
-
-    historyIndexRef.current = newIndex;
-    setHistoryIndex(newIndex);
-
-    setVideoClips(nextState.videoClips || []);
-    setTextLayers(nextState.textLayers || []);
-    setOverlayLayers(nextState.overlayLayers || []);
-    setTotalDuration(nextState.totalDuration || 0);
-    setSelectedClipId(nextState.selectedClipId || null);
-    setSelectedTextLayerId(nextState.selectedTextLayerId || null);
-    setSelectedOverlayLayerId(nextState.selectedOverlayLayerId || null);
-    setCurrentTime(nextState.currentTime || 0);
-    setMusicTrack(nextState.musicTrack || null);
-    setTransitions(nextState.transitions || {});
-
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ x: (nextState.currentTime || 0) * PIXELS_PER_MS, animated: false });
-    }
-
-    setTimeout(() => {
-      isUndoingOrRedoingRef.current = false;
-    }, 50);
-  }, [PIXELS_PER_MS]);
 
   const allTransitionPairs = useMemo<TransitionPair[]>(() => {
     const pairs: TransitionPair[] = [];
@@ -642,17 +600,6 @@ export function EditorPage() {
     return videoClips.find((c) => c.id === selectedClipId) || videoClips[0] || null;
   }, [videoClips, selectedClipId]);
 
-  const activePlaybackClip = useMemo(() => {
-    let accumulated = 0;
-    for (const clip of videoClips) {
-      const clipDuration = clip.endTime - clip.startTime;
-      if (currentTime >= accumulated && currentTime < accumulated + clipDuration) {
-        return { clip, localStartMs: clip.startTime, accumulated };
-      }
-      accumulated += clipDuration;
-    }
-    return { clip: videoClips[0] || null, localStartMs: 0, accumulated: 0 };
-  }, [currentTime, videoClips]);
 
   const activeSpeed = selectedClip?.speed || 1.0;
 
@@ -740,138 +687,6 @@ export function EditorPage() {
   const [musicTrack, setMusicTrack] = useState<MusicTrack | null>(null);
   const [selectedTimelineClip, setSelectedTimelineClip] = useState<"music" | null>(null);
 
-  const audioRef = useRef<Audio.Sound | null>(null);
-
-  const playbackStateRef = useRef({
-    isPlaying,
-    activePlaybackClip,
-    isTrimMode,
-    selectedClipId,
-    draftTrimStart,
-    draftTrimEnd,
-    totalDuration,
-    videoClips,
-    PIXELS_PER_MS,
-  });
-
-  useEffect(() => {
-    playbackStateRef.current = {
-      isPlaying,
-      activePlaybackClip,
-      isTrimMode,
-      selectedClipId,
-      draftTrimStart,
-      draftTrimEnd,
-      totalDuration,
-      videoClips,
-      PIXELS_PER_MS,
-    };
-  });
-
-  const handlePlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
-    if (!status.isLoaded) return;
-
-    const {
-      isPlaying: currentlyPlaying,
-      activePlaybackClip: activeClipInfo,
-      isTrimMode: inTrim,
-      selectedClipId: selId,
-      draftTrimStart: dStart,
-      draftTrimEnd: dEnd,
-      totalDuration: totDur,
-      videoClips: clips,
-      PIXELS_PER_MS: pxPerMs,
-    } = playbackStateRef.current;
-
-    const clip = activeClipInfo.clip;
-    if (!clip) return;
-
-    const isTrimmingActiveClip = inTrim && selId === clip.id;
-    let localVideoStart = clip.trimStartOffset || 0;
-    let localVideoEnd = clip.trimEndOffset || clip.originalDuration || 5000;
-    
-    if (isTrimmingActiveClip) {
-      const deltaStart = dStart - clip.startTime;
-      const deltaEnd = clip.endTime - dEnd;
-      localVideoStart = (clip.trimStartOffset || 0) + deltaStart;
-      localVideoEnd = (clip.trimEndOffset || clip.originalDuration || 5000) - deltaEnd;
-    }
-
-    const isAtClipEnd = (status.positionMillis >= localVideoEnd - 60 && status.positionMillis > 0) || 
-                        (status.didJustFinish && status.positionMillis >= localVideoEnd - 300);
-
-    if (isAtClipEnd && currentlyPlaying) {
-      const isLastClip = activeClipInfo.accumulated + (clip.endTime - clip.startTime) >= totDur - 100;
-      if (isLastClip) {
-        // End of final clip: return to the first clip (0ms) and continue playing
-        setCurrentTime(0);
-        if (scrollViewRef.current) {
-          scrollViewRef.current.scrollTo({ x: 0, animated: false });
-        }
-        videoRef.current?.setPositionAsync(clips[0]?.trimStartOffset || 0);
-        videoRef.current?.playAsync();
-      } else {
-        // Advance into next clip seamlessly
-        const nextTime = activeClipInfo.accumulated + (clip.endTime - clip.startTime) + 1;
-        setCurrentTime(nextTime);
-        if (scrollViewRef.current) {
-          scrollViewRef.current.scrollTo({ x: nextTime * pxPerMs, animated: false });
-        }
-      }
-      return;
-    }
-
-    if (currentlyPlaying && !status.isPlaying && !status.isBuffering && !status.didJustFinish) {
-      videoRef.current?.playAsync();
-    }
-
-    if (status.positionMillis < localVideoStart - 200 && currentlyPlaying) {
-      videoRef.current?.setPositionAsync(localVideoStart);
-      setCurrentTime(activeClipInfo.accumulated);
-      if (scrollViewRef.current) {
-        scrollViewRef.current.scrollTo({ x: activeClipInfo.accumulated * pxPerMs, animated: false });
-      }
-      return;
-    }
-
-    if (currentlyPlaying || status.isPlaying) {
-      const timeIntoClip = status.positionMillis - localVideoStart;
-      const newGlobalTime = Math.max(0, activeClipInfo.accumulated + timeIntoClip);
-      setCurrentTime(newGlobalTime);
-      
-      if (scrollViewRef.current) {
-        const scrollX = newGlobalTime * pxPerMs;
-        scrollViewRef.current.scrollTo({ x: scrollX, animated: false });
-      }
-    }
-
-    if (status.durationMillis && clips.length === 1) {
-      const realDur = status.durationMillis;
-      const currentClip = clips[0];
-      if (currentClip && (currentClip.endTime !== realDur || totDur !== realDur)) {
-        setTotalDuration(realDur);
-        setVideoClips((prev) => {
-          if (prev.length === 1 && (prev[0].endTime !== realDur || prev[0].originalDuration !== realDur)) {
-            return [{
-              ...prev[0],
-              originalDuration: realDur,
-              trimEndOffset: realDur,
-              endTime: realDur,
-            }];
-          }
-          return prev;
-        });
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.unloadAsync();
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (videoClips.length === 0 && historyRef.current.length === 0) {
@@ -1218,153 +1033,86 @@ export function EditorPage() {
     })
   ).current;
 
-  useEffect(() => {
-    async function loadAudio() {
-      if (audioRef.current) {
-        await audioRef.current.unloadAsync();
-        audioRef.current = null;
-      }
-      if (musicTrack?.uri) {
-        try {
-          const { sound } = await Audio.Sound.createAsync({ uri: musicTrack.uri });
-          audioRef.current = sound;
-          if (isPlaying) {
-            await sound.playAsync();
-          }
-        } catch (e) {
-          console.log("Error loading audio", e);
-        }
-      }
-    }
-    loadAudio();
-  }, [musicTrack?.uri]);
+  const playback = usePlayback({
+    videoRef,
+    audioRef,
+    scrollViewRef,
+    videoClips,
+    selectedClip,
+    selectedClipId,
+    setSelectedClipId,
+    setVideoClips,
+    totalDuration,
+    setTotalDuration,
+    currentTime,
+    setCurrentTime,
+    isPlaying,
+    setIsPlaying,
+    isTrimMode,
+    trimStart,
+    trimEnd,
+    draftTrimStart,
+    draftTrimEnd,
+    musicTrack,
+    PIXELS_PER_MS,
+  });
 
-  useEffect(() => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.playAsync().catch(() => {});
-      } else {
-        audioRef.current.pauseAsync().catch(() => {});
-      }
-    }
-  }, [isPlaying]);
+  const {
+    previewMuted,
+    setPreviewMuted,
+    activePlaybackClip,
+    handlePlaybackStatusUpdate,
+    handlePlayPause,
+    handlePreviousClip,
+    handleNextClip,
+    formatTime,
+  } = playback;
 
-  useEffect(() => {
-    if (!isPlaying) return;
+  const timeline = useTimeline({
+    videoRef,
+    audioRef,
+    scrollViewRef,
+    videoClips,
+    selectedClipId,
+    setSelectedClipId,
+    textLayers,
+    selectedTextLayerId,
+    setSelectedTextLayerId,
+    overlayLayers,
+    selectedOverlayLayerId,
+    setSelectedOverlayLayerId,
+    musicTrack,
+    selectedTimelineClip,
+    setSelectedTimelineClip,
+    transitions,
+    setSelectedTransitionPair,
+    totalDuration,
+    currentTime,
+    setCurrentTime,
+    isPlaying,
+    isTrimMode,
+    trimStart,
+    trimEnd,
+    draftTrimStart,
+    draftTrimEnd,
+    isSnappingLeft,
+    isSnappingRight,
+    previewMuted,
+    setPreviewMuted,
+    setSelectedTool,
+    setMusicSheetVisible,
+    handleAddTextLayer,
+    handleAddOverlayLayer,
+    handleAddMediaPress,
+    leftPanResponderHandlers: leftPanResponder.panHandlers,
+    rightPanResponderHandlers: rightPanResponder.panHandlers,
+    formatTime,
+    videoUri,
+  });
 
-    const interval = setInterval(() => {
-      setCurrentTime((prevTime) => {
-        const nextTime = prevTime + 33;
-        if (totalDuration > 0 && nextTime >= totalDuration) {
-          setIsPlaying(false);
-          if (videoRef.current) {
-            try { videoRef.current.pauseAsync(); } catch (e) {}
-          }
-          if (scrollViewRef.current) {
-            scrollViewRef.current.scrollTo({ x: 0, animated: false });
-          }
-          return 0;
-        }
-        if (scrollViewRef.current) {
-          scrollViewRef.current.scrollTo({ x: nextTime * PIXELS_PER_MS, animated: false });
-        }
-        return nextTime;
-      });
-    }, 33);
+  const { projectTimelineWidth, handleScroll } = timeline;
 
-    return () => clearInterval(interval);
-  }, [isPlaying, totalDuration]);
 
-  const formatTime = (ms: number) => {
-    if (isNaN(ms) || ms < 0) return "00:00";
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  const handlePlayPause = async () => {
-    const nextPlayingState = !isPlaying;
-
-    if (nextPlayingState) {
-      if (totalDuration > 0 && currentTime >= totalDuration - 100) {
-        setCurrentTime(0);
-        if (scrollViewRef.current) {
-          scrollViewRef.current.scrollTo({ x: 0, animated: false });
-        }
-        if (videoRef.current) {
-          try {
-            await videoRef.current.setPositionAsync(0);
-          } catch (e) {}
-        }
-      }
-    }
-
-    setIsPlaying(nextPlayingState);
-
-    if (videoRef.current) {
-      try {
-        if (nextPlayingState) {
-          const activeStart = isTrimMode ? draftTrimStart : trimStart;
-          const activeEnd = isTrimMode ? draftTrimEnd : (trimEnd > 0 ? trimEnd : totalDuration);
-          if (currentTime >= activeEnd || currentTime < activeStart) {
-            try {
-              await videoRef.current.setPositionAsync(activeStart);
-            } catch (e) {}
-            setCurrentTime(activeStart);
-          }
-          try {
-            await videoRef.current.setRateAsync(selectedClip?.speed || 1.0, selectedClip?.maintainPitch ?? true);
-          } catch (e) {}
-          await videoRef.current.playAsync();
-        } else {
-          await videoRef.current.pauseAsync();
-        }
-      } catch (e) {
-        console.log("Playback toggle error:", e);
-      }
-    }
-  };
-
-  const handlePreviousClip = async () => {
-    // Find active clip index based on global currentTime
-    const currentIndex = videoClips.findIndex(clip => currentTime >= clip.startTime && currentTime < clip.endTime);
-    let activeIndex = currentIndex !== -1 ? currentIndex : videoClips.length - 1;
-
-    if (activeIndex > 0) {
-      const prevClip = videoClips[activeIndex - 1];
-      setCurrentTime(prevClip.startTime);
-      setSelectedClipId(prevClip.id);
-      if (scrollViewRef.current) {
-        scrollViewRef.current.scrollTo({ x: prevClip.startTime * PIXELS_PER_MS, animated: true });
-      }
-      
-      // Update playback source manually if paused
-      if (!isPlaying) {
-        if (videoRef.current) {
-          await videoRef.current.setPositionAsync(prevClip.trimStartOffset || 0);
-        }
-      }
-    }
-  };
-
-  const handleNextClip = async () => {
-    const currentIndex = videoClips.findIndex(clip => currentTime >= clip.startTime && currentTime < clip.endTime);
-    let activeIndex = currentIndex !== -1 ? currentIndex : videoClips.length - 1;
-
-    if (activeIndex < videoClips.length - 1) {
-      const nextClip = videoClips[activeIndex + 1];
-      setCurrentTime(nextClip.startTime);
-      setSelectedClipId(nextClip.id);
-      if (scrollViewRef.current) {
-        scrollViewRef.current.scrollTo({ x: nextClip.startTime * PIXELS_PER_MS, animated: true });
-      }
-
-      if (videoRef.current) {
-        await videoRef.current.setPositionAsync(nextClip.trimStartOffset || 0);
-      }
-    }
-  };
 
   const renderTopToolbar = () => (
     <View style={styles.topToolbar}>
@@ -1703,19 +1451,7 @@ export function EditorPage() {
             showsHorizontalScrollIndicator={false} 
             contentContainerStyle={[styles.timelineScroll, { paddingLeft: 0, paddingRight: 300 }]}
             scrollEventThrottle={16}
-            onScroll={(e) => {
-              if (!isPlaying) {
-                const scrollX = e.nativeEvent.contentOffset.x;
-                const newTimeMs = Math.max(0, scrollX / PIXELS_PER_MS);
-                if (videoRef.current) {
-                  videoRef.current.setPositionAsync(newTimeMs);
-                }
-                if (audioRef.current) {
-                  audioRef.current.setPositionAsync(newTimeMs);
-                }
-                setCurrentTime(newTimeMs);
-              }
-            }}
+            onScroll={handleScroll}
           >
             <View style={styles.tracks}>
                 <>
@@ -2088,9 +1824,9 @@ export function EditorPage() {
     return (
       <View style={[
         styles.editingToolbar,
-        { paddingBottom: Math.max(insets.bottom, 8) },
         isPanelOpen && { display: 'none' as const },
       ]}>
+
         <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
         <ScrollView
           horizontal
@@ -2169,7 +1905,16 @@ export function EditorPage() {
       );
     }
 
-    if (selectedTool === "color" || selectedTool === "adjust" || selectedTool === "filters") {
+    if (selectedTool === "filters" || selectedTool === "filter") {
+      return (
+        <FilterPanel
+          onClose={() => setSelectedTool(null)}
+          onOpenAdjust={() => setSelectedTool("adjust")}
+        />
+      );
+    }
+
+    if (selectedTool === "color" || selectedTool === "adjust") {
       return (
         <ColorPanel
           adjustments={selectedClip?.adjustments}
@@ -2388,9 +2133,9 @@ export function EditorPage() {
         </View>
       )}
       
-      {/* 5. BOTTOM TOOLBAR (height: 92 + safe area, anchored at the bottom) */}
+      {/* 5. BOTTOM TOOLBAR (docked directly beneath timeline with zero overlap) */}
       {!isPreviewFullscreen && (
-        <View style={{ height: 92 + insets.bottom, paddingBottom: insets.bottom, backgroundColor: "#141416", overflow: 'hidden' }}>
+        <View style={{ backgroundColor: "#141416", paddingBottom: Math.max(insets.bottom, 12), justifyContent: "center" }}>
           {(() => {
             const isPanelOpen = Boolean(selectedTool) || Boolean(selectedTimelineClip);
             if (isTrimMode) return renderEditingToolbar();
@@ -2399,6 +2144,12 @@ export function EditorPage() {
           })()}
         </View>
       )}
+
+
+
+
+
+
 
       {/* 6. TOOL PANEL OVERLAY (absolute overlay, zIndex: 100) */}
       {!isPreviewFullscreen && (Boolean(selectedTool) || Boolean(selectedTimelineClip)) && !isTrimMode && (
@@ -2533,7 +2284,7 @@ const styles = StyleSheet.create({
     shadowColor: "#3B82F6", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
   },
   editingToolbar: {
-    height: 92,
+    height: 84,
     backgroundColor: "rgba(18,18,24,0.97)",
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.06)",
@@ -2544,12 +2295,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 12,
   },
+
   toolbarScroll: {
-    paddingHorizontal: 0,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
     gap: 0,
     alignItems: "center",
+    justifyContent: "center",
   },
   toolIconBox: {
     width: 56,

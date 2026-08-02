@@ -9,3 +9,13 @@ export * from "./components/bottom-controls/EditorBottomControls";
 export * from "./components/playback-controls/EditorPlaybackControls";
 export * from "./components/properties-panel/EditorPropertiesPanel";
 export * from "./components/timeline";
+export * from "./player";
+export * from "./store";
+export * from "./commands";
+export * from "./layers";
+export * from "./filters";
+
+
+
+
+
