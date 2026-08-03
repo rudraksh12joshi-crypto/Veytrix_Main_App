@@ -165,6 +165,8 @@ export function EditorPage() {
   const audioRef = useRef<Audio.Sound | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const lastStateUpdate = useRef(0);
+  const toolbarScrollXRef = useRef(0);
+  const toolbarScrollViewRef = useRef<ScrollView>(null);
   const isPlaying = useProjectStore((s) => s.isPlaying);
   const setIsPlaying = useProjectStore((s) => s.setIsPlaying);
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
@@ -786,6 +788,19 @@ export function EditorPage() {
       }
     }
   }, [videoClips]);
+
+  const isToolbarHidden = Boolean(selectedTool) || Boolean(selectedTimelineClip) || isTrimMode;
+  const prevIsToolbarHiddenRef = useRef(isToolbarHidden);
+
+  useEffect(() => {
+    if (prevIsToolbarHiddenRef.current && !isToolbarHidden) {
+      const timer = setTimeout(() => {
+        toolbarScrollViewRef.current?.scrollTo({ x: toolbarScrollXRef.current, animated: false });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+    prevIsToolbarHiddenRef.current = isToolbarHidden;
+  }, [isToolbarHidden]);
 
   const handleSplitClip = () => {
     const defaultClip: VideoClip = {
@@ -1842,29 +1857,17 @@ export function EditorPage() {
   };
 
   const renderEditingToolbar = () => {
-    if (isTrimMode) {
-      return (
-        <TrimToolbar
-          durationMs={Math.max(0, draftTrimEnd - draftTrimStart)}
-          onCancel={handleCancelTrim}
-          onDone={handleDoneTrimAndClose}
-          formatTime={formatTime}
-          bottomInset={insets.bottom}
-        />
-      );
-    }
-
     const hasVideoClip = Boolean(videoUri) || videoClips.length > 0 || totalDuration > 0;
-    const isPanelOpen = Boolean(selectedTool) || Boolean(selectedTimelineClip);
 
     return (
       <View style={[
         styles.editingToolbar,
-        isPanelOpen && { display: 'none' as const },
+        isToolbarHidden && { display: 'none' as const },
       ]}>
 
         <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
         <ScrollView
+          ref={toolbarScrollViewRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.toolbarScroll}
@@ -1873,6 +1876,9 @@ export function EditorPage() {
           bounces={Platform.OS === "ios"}
           scrollEventThrottle={16}
           removeClippedSubviews={Platform.OS === "android"}
+          onScroll={(e) => {
+            toolbarScrollXRef.current = e.nativeEvent.contentOffset.x;
+          }}
         >
           {EDITING_TOOLS.map((tool) => {
             let isDisabled = false;
@@ -2172,12 +2178,16 @@ export function EditorPage() {
       {/* 5. BOTTOM TOOLBAR (docked directly beneath timeline with zero overlap) */}
       {!isPreviewFullscreen && (
         <View style={{ backgroundColor: "#141416", paddingBottom: Math.max(insets.bottom, 12), justifyContent: "center" }}>
-          {(() => {
-            const isPanelOpen = Boolean(selectedTool) || Boolean(selectedTimelineClip);
-            if (isTrimMode) return renderEditingToolbar();
-            if (isPanelOpen) return null; // Hide toolbar completely when panel is open
-            return renderEditingToolbar();
-          })()}
+          {isTrimMode && (
+            <TrimToolbar
+              durationMs={Math.max(0, draftTrimEnd - draftTrimStart)}
+              onCancel={handleCancelTrim}
+              onDone={handleDoneTrimAndClose}
+              formatTime={formatTime}
+              bottomInset={insets.bottom}
+            />
+          )}
+          {renderEditingToolbar()}
         </View>
       )}
 
