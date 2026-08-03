@@ -44,6 +44,38 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onClose, onOpenAdjust 
   }, [selectedCategory]);
 
   const applyFilterToClip = (clip: typeof videoClips[0], filter: FilterItem, intensityVal: number) => {
+    // If filter_none, return clean clip with zeroed adjustments and curves
+    if (filter.id === "filter_none") {
+      const cleanAdjustments = { ...clip.adjustments };
+      delete cleanAdjustments.shadowTint;
+      delete cleanAdjustments.highlightTint;
+      delete cleanAdjustments.duotonePrimary;
+      delete cleanAdjustments.duotoneSecondary;
+      return {
+        ...clip,
+        adjustments: {
+          ...cleanAdjustments,
+          brightness: 0,
+          contrast: 0,
+          saturation: 0,
+          exposure: 0,
+          temperature: 0,
+          tint: 0,
+          vibrance: 0,
+          highlights: 0,
+          shadows: 0,
+          whites: 0,
+          blacks: 0,
+          gamma: 0,
+          curves: {
+            filterId: "filter_none",
+            engineKey: "normal",
+            intensity: 100,
+          },
+        },
+      };
+    }
+
     const result = filterEngineManager.processFilter(
       filter.engineType,
       filter.engineKey,
@@ -51,10 +83,29 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onClose, onOpenAdjust 
       intensityVal
     );
 
+    // Clean base adjustments: strip previous filter-specific parameters before applying new filter
+    const baseAdjustments = { ...clip.adjustments };
+    delete baseAdjustments.shadowTint;
+    delete baseAdjustments.highlightTint;
+    delete baseAdjustments.duotonePrimary;
+    delete baseAdjustments.duotoneSecondary;
+
     return {
       ...clip,
       adjustments: {
-        ...clip.adjustments,
+        ...baseAdjustments,
+        brightness: 0,
+        contrast: 0,
+        saturation: 0,
+        exposure: 0,
+        temperature: 0,
+        tint: 0,
+        vibrance: 0,
+        highlights: 0,
+        shadows: 0,
+        whites: 0,
+        blacks: 0,
+        gamma: 0,
         ...(result.computedAdjustments as any),
         curves: {
           filterId: filter.id,

@@ -11,6 +11,10 @@ export interface ColorAdjustments {
   whites: number;
   blacks: number;
   gamma: number;
+  shadowTint?: string;
+  highlightTint?: string;
+  duotonePrimary?: string;
+  duotoneSecondary?: string;
   curves?: any;
 }
 

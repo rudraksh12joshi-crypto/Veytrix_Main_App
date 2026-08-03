@@ -1219,6 +1219,42 @@ export function EditorPage() {
               ]}
             />
           )}
+          {/* Dynamic Filter Tint & Tone Overlay */}
+          {activeAdj.shadowTint && (
+            <View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: activeAdj.shadowTint,
+                  opacity: 0.25,
+                },
+              ]}
+            />
+          )}
+          {activeAdj.duotonePrimary && (
+            <View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: activeAdj.duotonePrimary,
+                  opacity: 0.2,
+                },
+              ]}
+            />
+          )}
+          {activeAdj.saturation === -100 && (
+            <View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: "rgba(30,30,30,0.5)",
+                },
+              ]}
+            />
+          )}
           
           <OverlayOverlay
             layers={overlayLayers}

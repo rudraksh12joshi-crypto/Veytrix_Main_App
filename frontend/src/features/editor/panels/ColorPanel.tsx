@@ -179,7 +179,7 @@ export function ColorPanel({
           onPress={() => setSelectedCategory("adjust")}
         >
           <Ionicons
-            name={"sliders-outline" as any}
+            name={"options-outline" as any}
             size={14}
             color={selectedCategory === "adjust" ? "#FFCC00" : "#8E8E93"}
             style={{ marginRight: 4 }}
