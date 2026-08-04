@@ -16,6 +16,11 @@ export interface ColorAdjustments {
   duotonePrimary?: string;
   duotoneSecondary?: string;
   curves?: any;
+  activeFilter?: {
+    filterId: string;
+    engineKey: string;
+    intensity: number;
+  };
 }
 
 export type TextAnimationType =
@@ -150,6 +155,11 @@ export const DEFAULT_COLOR_ADJUSTMENTS: ColorAdjustments = {
   whites: 0,
   blacks: 0,
   gamma: 0,
+  activeFilter: {
+    filterId: "filter_none",
+    engineKey: "normal",
+    intensity: 100,
+  },
 };
 
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {

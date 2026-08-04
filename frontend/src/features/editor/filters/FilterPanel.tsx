@@ -29,7 +29,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onClose, onOpenAdjust 
     return videoClips.find((c) => c.id === selectedClipId) || videoClips[0] || null;
   }, [videoClips, selectedClipId]);
 
-  const initialFilterId = selectedClip?.adjustments?.curves?.filterId || "filter_none";
+  const initialFilterId = selectedClip?.adjustments?.activeFilter?.filterId || selectedClip?.adjustments?.curves?.filterId || "filter_none";
   const [currentFilterId, setCurrentFilterId] = useState<string>(initialFilterId);
 
   const initialClipsRef = React.useRef(videoClips);
@@ -44,29 +44,38 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onClose, onOpenAdjust 
   }, [selectedCategory]);
 
   const applyFilterToClip = (clip: typeof videoClips[0], filter: FilterItem, intensityVal: number) => {
-    // If filter_none, return clean clip with zeroed adjustments and curves
+    // Clean base adjustments: strip all previous filter effects & parameters to reset back to original source frame
+    const baseAdjustments = { ...clip.adjustments };
+    delete baseAdjustments.shadowTint;
+    delete baseAdjustments.highlightTint;
+    delete baseAdjustments.duotonePrimary;
+    delete baseAdjustments.duotoneSecondary;
+
+    // Reset numeric adjustment channels to original 0 baseline
+    baseAdjustments.brightness = 0;
+    baseAdjustments.contrast = 0;
+    baseAdjustments.saturation = 0;
+    baseAdjustments.exposure = 0;
+    baseAdjustments.temperature = 0;
+    baseAdjustments.tint = 0;
+    baseAdjustments.vibrance = 0;
+    baseAdjustments.highlights = 0;
+    baseAdjustments.shadows = 0;
+    baseAdjustments.whites = 0;
+    baseAdjustments.blacks = 0;
+    baseAdjustments.gamma = 0;
+
+    // If filter_none, return clean clip with activeFilter reset
     if (filter.id === "filter_none") {
-      const cleanAdjustments = { ...clip.adjustments };
-      delete cleanAdjustments.shadowTint;
-      delete cleanAdjustments.highlightTint;
-      delete cleanAdjustments.duotonePrimary;
-      delete cleanAdjustments.duotoneSecondary;
       return {
         ...clip,
         adjustments: {
-          ...cleanAdjustments,
-          brightness: 0,
-          contrast: 0,
-          saturation: 0,
-          exposure: 0,
-          temperature: 0,
-          tint: 0,
-          vibrance: 0,
-          highlights: 0,
-          shadows: 0,
-          whites: 0,
-          blacks: 0,
-          gamma: 0,
+          ...baseAdjustments,
+          activeFilter: {
+            filterId: "filter_none",
+            engineKey: "normal",
+            intensity: 100,
+          },
           curves: {
             filterId: "filter_none",
             engineKey: "normal",
@@ -76,6 +85,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onClose, onOpenAdjust 
       };
     }
 
+    // Process filter starting strictly from clean original params
     const result = filterEngineManager.processFilter(
       filter.engineType,
       filter.engineKey,
@@ -83,35 +93,19 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onClose, onOpenAdjust 
       intensityVal
     );
 
-    // Clean base adjustments: strip previous filter-specific parameters before applying new filter
-    const baseAdjustments = { ...clip.adjustments };
-    delete baseAdjustments.shadowTint;
-    delete baseAdjustments.highlightTint;
-    delete baseAdjustments.duotonePrimary;
-    delete baseAdjustments.duotoneSecondary;
+    const activeFilterObj = {
+      filterId: filter.id,
+      engineKey: filter.engineKey,
+      intensity: intensityVal,
+    };
 
     return {
       ...clip,
       adjustments: {
         ...baseAdjustments,
-        brightness: 0,
-        contrast: 0,
-        saturation: 0,
-        exposure: 0,
-        temperature: 0,
-        tint: 0,
-        vibrance: 0,
-        highlights: 0,
-        shadows: 0,
-        whites: 0,
-        blacks: 0,
-        gamma: 0,
         ...(result.computedAdjustments as any),
-        curves: {
-          filterId: filter.id,
-          engineKey: filter.engineKey,
-          intensity: intensityVal,
-        },
+        activeFilter: activeFilterObj,
+        curves: activeFilterObj,
       },
     };
   };
