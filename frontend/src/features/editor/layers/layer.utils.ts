@@ -1,14 +1,14 @@
-import { BaseLayer, UnifiedLayer } from "./layer.types";
+import { BaseLayer, UnifiedLayer, BaseLayerType } from "./layer.types";
 import { VideoClip, TextLayer, OverlayLayer } from "../types/editor.types";
 import { MusicTrack } from "../components/MusicLibrarySheet";
 
-export function createBaseLayer(
+export function createBaseLayer<T extends BaseLayerType>(
   id: string,
-  type: BaseLayer["type"],
+  type: T,
   trackId: string,
   startTime: number,
   endTime: number
-): BaseLayer {
+): BaseLayer & { type: T } {
   return {
     id,
     type,

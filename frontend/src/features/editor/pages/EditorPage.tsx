@@ -25,6 +25,9 @@ import { usePlayback } from "../player";
 import { useTimeline, PIXELS_PER_MS, THUMBNAIL_WIDTH, DEFAULT_TIMELINE_HEIGHT } from "../components/timeline";
 import { useProjectStore } from "../store";
 import { FilterPanel } from "../filters";
+import { TransitionRegistry } from "../transitions/registry";
+import { ExecutionGraphFactory } from "../transitions/execution";
+import { TransitionPreviewController, TransitionRenderSurface, PreviewFrameState } from "../transitions/preview";
 
 
 import {
@@ -232,6 +235,15 @@ export function EditorPage() {
   // Transitions State
   const [transitions, setTransitions] = useState<Record<string, ClipTransition>>({});
   const [selectedTransitionPair, setSelectedTransitionPair] = useState<TransitionPair | null>(null);
+  const [activeTransitionFrame, setActiveTransitionFrame] = useState<PreviewFrameState | null>(null);
+
+  useEffect(() => {
+    const controller = TransitionPreviewController.getInstance();
+    const unsubscribe = controller.subscribe((frameState) => {
+      setActiveTransitionFrame(frameState);
+    });
+    return unsubscribe;
+  }, []);
 
   interface EditorHistorySnapshot {
     videoClips: VideoClip[];
@@ -354,6 +366,32 @@ export function EditorPage() {
     return pairs;
   }, [videoClips]);
 
+  const mapTypeToCatalogId = (type: TransitionType): string | null => {
+    if (type === 'none') return null;
+    const registry = TransitionRegistry.getInstance();
+    registry.initialize();
+    const searchResults = registry.searchTransitions(type);
+    if (searchResults.length > 0) {
+      return searchResults[0].id;
+    }
+    const fallbackMap: Record<string, string> = {
+      fade: 'tr_2',
+      dissolve: 'tr_1',
+      crossfade: 'tr_1',
+      push: 'tr_80',
+      slide: 'tr_76',
+      zoom: 'tr_51',
+      spin: 'tr_101',
+      blur: 'tr_126',
+      flash: 'tr_179',
+      glitch: 'tr_151',
+      film: 'tr_178',
+      whip: 'tr_37',
+      stretch: 'tr_138'
+    };
+    return fallbackMap[type] || 'tr_1';
+  };
+
   const handleSelectTransition = (type: TransitionType) => {
     const pair = selectedTransitionPair || allTransitionPairs[0];
     if (!pair) return;
@@ -369,6 +407,21 @@ export function EditorPage() {
     };
     setTransitions(nextTransitions);
     recordHistory(createSnapshot({ transitions: nextTransitions }));
+
+    // COMPLETE PIPELINE CONNECTIVITY: Catalog -> Registry -> Master Engine -> Execution Graph -> Preview Renderer
+    if (type !== 'none') {
+      const catalogId = mapTypeToCatalogId(type);
+      if (catalogId) {
+        const graph = ExecutionGraphFactory.getInstance().createExecutionGraph(catalogId);
+        if (graph) {
+          const controller = TransitionPreviewController.getInstance();
+          controller.setTransition(graph);
+          controller.playPreview();
+        }
+      }
+    } else {
+      TransitionPreviewController.getInstance().clearTransition();
+    }
   };
 
   const handleAddOverlayLayer = async (type: OverlayLayer['type']) => {
@@ -1271,6 +1324,47 @@ export function EditorPage() {
             />
           )}
           
+          {/* Real-time Transition Preview Surface Overlay */}
+          {activeTransitionFrame && (() => {
+            const pair = selectedTransitionPair || allTransitionPairs[0];
+            const clipA = videoClips.find(c => c.id === pair?.fromId) || videoClips[0];
+            const clipB = videoClips.find(c => c.id === pair?.toId) || videoClips[1] || videoClips[0];
+
+            const renderMedia = (clip?: VideoClip) => {
+              if (!clip || !clip.videoUri) return null;
+              if (isImageUri(clip.videoUri, clip.mediaType)) {
+                return (
+                  <Image
+                    source={{ uri: clip.videoUri }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="contain"
+                  />
+                );
+              }
+              return (
+                <Video
+                  source={{ uri: clip.videoUri }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode={ResizeMode.CONTAIN}
+                  shouldPlay={isPlaying}
+                  isMuted={previewMuted || Boolean(clip?.audio?.muted)}
+                />
+              );
+            };
+
+            return (
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <TransitionRenderSurface
+                  outgoingContent={renderMedia(clipA)}
+                  incomingContent={renderMedia(clipB)}
+                  outgoingStyle={activeTransitionFrame.outgoingClipStyle}
+                  incomingStyle={activeTransitionFrame.incomingClipStyle}
+                  compositeStyle={activeTransitionFrame.compositeStyle}
+                />
+              </View>
+            );
+          })()}
+
           <OverlayOverlay
             layers={overlayLayers}
             selectedLayerId={selectedOverlayLayerId}

@@ -76,6 +76,8 @@ const TRANSITION_OPTIONS: TransitionOption[] = [
   { id: "stretch", label: "Stretch", icon: "resize-outline", color: "#8B5CF6" },
 ];
 
+import { TransitionPickerSheet, TransitionPairInfo } from "../transitions/ui";
+
 export function TransitionPanel({
   activePair,
   allPairs,
@@ -86,102 +88,18 @@ export function TransitionPanel({
   onClose,
   bottomInset = 20,
 }: TransitionPanelProps) {
-  const fromClipIndex = activePair ? activePair.fromIndex : 0;
-  const toClipIndex = activePair ? activePair.toIndex : 1;
-
   return (
-    <View style={[styles.panel, { paddingBottom: Math.max(bottomInset, 20) }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="swap-horizontal" size={18} color="#FFCC00" />
-          </View>
-          <View>
-            <Text style={styles.title}>Clip Transition</Text>
-            <Text style={styles.subtitle}>
-              Applying between Clip {fromClipIndex + 1} ➔ Clip {toClipIndex + 1}
-            </Text>
-          </View>
-        </View>
-
-        <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
-          <Ionicons name="close-circle" size={24} color="#666" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Pair Selector Chips (if multiple clip transitions exist) */}
-      {allPairs.length > 1 && (
-        <View style={styles.pairSelectorWrap}>
-          <Text style={styles.sectionLabel}>Select Junction:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pairChipsRow}>
-            {allPairs.map((pair, idx) => {
-              const isActive = activePair?.fromId === pair.fromId && activePair?.toId === pair.toId;
-              return (
-                <TouchableOpacity
-                  key={`${pair.fromId}_${pair.toId}`}
-                  style={[styles.pairChip, isActive && styles.pairChipActive]}
-                  onPress={() => onSelectPair(pair)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.pairChipText, isActive && styles.pairChipTextActive]}>
-                    Clip {pair.fromIndex + 1} ➔ Clip {pair.toIndex + 1}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Transition Options Grid */}
-      <ScrollView
-        style={styles.optionsScroll}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.optionsGrid}
-      >
-        {TRANSITION_OPTIONS.map((opt) => {
-          const isSelected = activeTransitionType === opt.id;
-          return (
-            <TouchableOpacity
-              key={opt.id}
-              style={[
-                styles.optionCard,
-                isSelected && { borderColor: "#FFCC00", backgroundColor: "rgba(255, 204, 0, 0.12)" },
-              ]}
-              onPress={() => onSelectTransition(opt.id)}
-              activeOpacity={0.8}
-            >
-              <View
-                style={[
-                  styles.optionIconBox,
-                  { backgroundColor: isSelected ? "#FFCC00" : "rgba(255,255,255,0.08)" },
-                ]}
-              >
-                <Ionicons
-                  name={opt.icon as any}
-                  size={22}
-                  color={isSelected ? "#000" : opt.color}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.optionLabel,
-                  isSelected && { color: "#FFCC00", fontWeight: "700" },
-                ]}
-              >
-                {opt.label}
-              </Text>
-              {isSelected && (
-                <View style={styles.activeCheck}>
-                  <Ionicons name="checkmark-circle" size={14} color="#FFCC00" />
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    </View>
+    <TransitionPickerSheet
+      activePair={activePair}
+      allPairs={allPairs}
+      savedTransitionId={activeTransitionType}
+      onSelectPair={onSelectPair}
+      onApplyTransition={(data) => {
+        onSelectTransition(data.transitionId as TransitionType);
+      }}
+      onClose={onClose}
+      bottomInset={bottomInset}
+    />
   );
 }
 
