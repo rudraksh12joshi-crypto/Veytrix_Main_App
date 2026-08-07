@@ -2,6 +2,45 @@ import { TransitionExecutionGraph } from '../execution/TransitionExecutionGraph'
 import { TransitionFrameCalculator } from './TransitionFrameCalculator';
 import { PreviewFrameState, RenderStyleState } from './TransitionPreviewContext';
 
+const VALID_MIX_BLEND_MODES = new Set([
+  'normal',
+  'multiply',
+  'screen',
+  'overlay',
+  'darken',
+  'lighten',
+  'color-dodge',
+  'color-burn',
+  'hard-light',
+  'soft-light',
+  'difference',
+  'exclusion',
+  'hue',
+  'saturation',
+  'color',
+  'luminosity'
+]);
+
+export function normalizeMixBlendMode(mode?: string): string {
+  if (!mode) return 'normal';
+  
+  const normalized = String(mode)
+    .trim()
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .toLowerCase()
+    .replace(/_/g, '-');
+
+  if (VALID_MIX_BLEND_MODES.has(normalized)) {
+    return normalized;
+  }
+
+  if (normalized === 'color-dip') {
+    return 'normal';
+  }
+
+  return 'normal';
+}
+
 export class TransitionPreviewRenderer {
   private static defaultStyle(): RenderStyleState {
     return {
@@ -166,7 +205,7 @@ export class TransitionPreviewRenderer {
 
         case 'BLEND': {
           if (params.blendMode) {
-            targetStyle.mixBlendMode = String(params.blendMode).toLowerCase();
+            targetStyle.mixBlendMode = normalizeMixBlendMode(params.blendMode);
           }
           break;
         }

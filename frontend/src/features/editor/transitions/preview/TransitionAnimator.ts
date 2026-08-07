@@ -16,6 +16,7 @@ export class TransitionAnimator {
   private currentFps = 60;
 
   public setGraph(graph: TransitionExecutionGraph | null): void {
+    this.pause();
     this.graph = graph;
     this.seek(0);
   }

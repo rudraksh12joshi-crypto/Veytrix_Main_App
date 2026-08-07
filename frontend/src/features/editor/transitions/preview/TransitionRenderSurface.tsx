@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { RenderStyleState } from './TransitionPreviewContext';
+import { normalizeMixBlendMode } from './TransitionPreviewRenderer';
 
 interface TransitionRenderSurfaceProps {
   outgoingContent?: React.ReactNode;
@@ -11,6 +12,13 @@ interface TransitionRenderSurfaceProps {
   style?: ViewStyle;
 }
 
+const sanitizeStyle = (rawStyles?: React.CSSProperties | any) => {
+  if (!rawStyles) return {};
+  const { mixBlendMode, ...rest } = rawStyles;
+  const safeMode = normalizeMixBlendMode(mixBlendMode);
+  return safeMode ? { ...rest, mixBlendMode: safeMode } : rest;
+};
+
 export const TransitionRenderSurface: React.FC<TransitionRenderSurfaceProps> = ({
   outgoingContent,
   incomingContent,
@@ -19,17 +27,17 @@ export const TransitionRenderSurface: React.FC<TransitionRenderSurfaceProps> = (
   compositeStyle,
   style = {}
 }) => {
-  const defaultOutgoing = outgoingStyle
-    ? outgoingStyle.rawStyles
-    : { opacity: 1 };
+  const defaultOutgoing = sanitizeStyle(
+    outgoingStyle ? outgoingStyle.rawStyles : { opacity: 1 }
+  );
 
-  const defaultIncoming = incomingStyle
-    ? incomingStyle.rawStyles
-    : { opacity: 0 };
+  const defaultIncoming = sanitizeStyle(
+    incomingStyle ? incomingStyle.rawStyles : { opacity: 0 }
+  );
 
-  const defaultComposite = compositeStyle
-    ? compositeStyle.rawStyles
-    : { opacity: 1 };
+  const defaultComposite = sanitizeStyle(
+    compositeStyle ? compositeStyle.rawStyles : { opacity: 1 }
+  );
 
   return (
     <View style={[styles.container, style]} pointerEvents="none">

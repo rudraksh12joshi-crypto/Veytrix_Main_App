@@ -108,6 +108,13 @@ export const TransitionPickerSheet: React.FC<TransitionPickerSheetProps> = ({
     TransitionPreviewController.getInstance().clearTransition();
   }, [savedTransitionId, savedDuration, activePair, registry]);
 
+  // Clean up transition preview when picker sheet unmounts
+  useEffect(() => {
+    return () => {
+      TransitionPreviewController.getInstance().clearTransition();
+    };
+  }, []);
+
   const triggerPreview = (model: TransitionModel, duration: number) => {
     if (model.id === 'none') {
       TransitionPreviewController.getInstance().clearTransition();

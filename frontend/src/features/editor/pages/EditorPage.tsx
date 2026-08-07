@@ -28,6 +28,7 @@ import { FilterPanel } from "../filters";
 import { TransitionRegistry } from "../transitions/registry";
 import { ExecutionGraphFactory } from "../transitions/execution";
 import { TransitionPreviewController, TransitionRenderSurface, PreviewFrameState } from "../transitions/preview";
+import { TransitionPreviewOverlay } from "../components/TransitionPreviewOverlay";
 
 
 import {
@@ -235,15 +236,6 @@ export function EditorPage() {
   // Transitions State
   const [transitions, setTransitions] = useState<Record<string, ClipTransition>>({});
   const [selectedTransitionPair, setSelectedTransitionPair] = useState<TransitionPair | null>(null);
-  const [activeTransitionFrame, setActiveTransitionFrame] = useState<PreviewFrameState | null>(null);
-
-  useEffect(() => {
-    const controller = TransitionPreviewController.getInstance();
-    const unsubscribe = controller.subscribe((frameState) => {
-      setActiveTransitionFrame(frameState);
-    });
-    return unsubscribe;
-  }, []);
 
   interface EditorHistorySnapshot {
     videoClips: VideoClip[];
@@ -344,13 +336,54 @@ export function EditorPage() {
     setHistoryIndex(nextIndex);
   }, [createSnapshot]);
 
-  const handleUndo = useCallback(() => {
-    commandManager.undo();
+  const applySnapshot = useCallback((snapshot: EditorHistorySnapshot) => {
+    isUndoingOrRedoingRef.current = true;
+    setVideoClips(snapshot.videoClips || []);
+    setTextLayers(snapshot.textLayers || []);
+    setOverlayLayers(snapshot.overlayLayers || []);
+    setTotalDuration(snapshot.totalDuration || 0);
+    setSelectedClipId(snapshot.selectedClipId);
+    setSelectedTextLayerId(snapshot.selectedTextLayerId);
+    setSelectedOverlayLayerId(snapshot.selectedOverlayLayerId);
+    setCurrentTime(snapshot.currentTime || 0);
+    setMusicTrack(snapshot.musicTrack);
+    setTransitions(snapshot.transitions || {});
+    setTimeout(() => {
+      isUndoingOrRedoingRef.current = false;
+    }, 50);
   }, []);
 
+  const handleUndo = useCallback(() => {
+    const currentIdx = historyIndexRef.current;
+    if (currentIdx > 0) {
+      const prevIndex = currentIdx - 1;
+      historyIndexRef.current = prevIndex;
+      setHistoryIndex(prevIndex);
+      const snapshot = historyRef.current[prevIndex];
+      if (snapshot) {
+        applySnapshot(snapshot);
+      }
+    }
+    if (commandManager.canUndo()) {
+      commandManager.undo();
+    }
+  }, [applySnapshot]);
+
   const handleRedo = useCallback(() => {
-    commandManager.redo();
-  }, []);
+    const currentIdx = historyIndexRef.current;
+    if (currentIdx >= 0 && currentIdx < historyRef.current.length - 1) {
+      const nextIndex = currentIdx + 1;
+      historyIndexRef.current = nextIndex;
+      setHistoryIndex(nextIndex);
+      const snapshot = historyRef.current[nextIndex];
+      if (snapshot) {
+        applySnapshot(snapshot);
+      }
+    }
+    if (commandManager.canRedo()) {
+      commandManager.redo();
+    }
+  }, [applySnapshot]);
 
 
   const allTransitionPairs = useMemo<TransitionPair[]>(() => {
@@ -396,15 +429,21 @@ export function EditorPage() {
     const pair = selectedTransitionPair || allTransitionPairs[0];
     if (!pair) return;
     const pairKey = `${pair.fromId}_${pair.toId}`;
-    const nextTransitions = {
-      ...transitions,
-      [pairKey]: {
-        id: pairKey,
-        fromClipId: pair.fromId,
-        toClipId: pair.toId,
-        type,
-      },
-    };
+    let nextTransitions: Record<string, ClipTransition>;
+    if (type === 'none') {
+      nextTransitions = { ...transitions };
+      delete nextTransitions[pairKey];
+    } else {
+      nextTransitions = {
+        ...transitions,
+        [pairKey]: {
+          id: pairKey,
+          fromClipId: pair.fromId,
+          toClipId: pair.toId,
+          type,
+        },
+      };
+    }
     setTransitions(nextTransitions);
     recordHistory(createSnapshot({ transitions: nextTransitions }));
 
@@ -1325,45 +1364,14 @@ export function EditorPage() {
           )}
           
           {/* Real-time Transition Preview Surface Overlay */}
-          {activeTransitionFrame && (() => {
-            const pair = selectedTransitionPair || allTransitionPairs[0];
-            const clipA = videoClips.find(c => c.id === pair?.fromId) || videoClips[0];
-            const clipB = videoClips.find(c => c.id === pair?.toId) || videoClips[1] || videoClips[0];
-
-            const renderMedia = (clip?: VideoClip) => {
-              if (!clip || !clip.videoUri) return null;
-              if (isImageUri(clip.videoUri, clip.mediaType)) {
-                return (
-                  <Image
-                    source={{ uri: clip.videoUri }}
-                    style={StyleSheet.absoluteFill}
-                    resizeMode="contain"
-                  />
-                );
-              }
-              return (
-                <Video
-                  source={{ uri: clip.videoUri }}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode={ResizeMode.CONTAIN}
-                  shouldPlay={isPlaying}
-                  isMuted={previewMuted || Boolean(clip?.audio?.muted)}
-                />
-              );
-            };
-
-            return (
-              <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                <TransitionRenderSurface
-                  outgoingContent={renderMedia(clipA)}
-                  incomingContent={renderMedia(clipB)}
-                  outgoingStyle={activeTransitionFrame.outgoingClipStyle}
-                  incomingStyle={activeTransitionFrame.incomingClipStyle}
-                  compositeStyle={activeTransitionFrame.compositeStyle}
-                />
-              </View>
-            );
-          })()}
+          <TransitionPreviewOverlay
+            selectedTransitionPair={selectedTransitionPair}
+            allTransitionPairs={allTransitionPairs}
+            videoClips={videoClips}
+            isPlaying={isPlaying}
+            previewMuted={previewMuted}
+            videoUri={videoUri}
+          />
 
           <OverlayOverlay
             layers={overlayLayers}
